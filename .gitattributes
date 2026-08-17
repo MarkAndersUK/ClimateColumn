@@ -1,0 +1,28 @@
+# Normalise every text file to LF, in the repository and in the working tree.
+#
+# Without this, the checked-out bytes depend on each contributor's core.autocrlf setting, and a
+# file can appear modified purely because it was opened on a different platform. Pinning both ends
+# means the same bytes everywhere and no line-ending diffs ever.
+#
+# LF rather than native CRLF on Windows because the repository already stores LF, so this is the
+# choice that changes nothing on checkout. Visual Studio, VS Code and PowerShell all read LF
+# without complaint; the only file that was CRLF on disk was the solution, which git was
+# normalising on commit anyway.
+* text=auto eol=lf
+
+# C# hunk headers, so a diff names the method it is inside rather than just the line numbers.
+*.cs text diff=csharp
+
+# Binary: never convert line endings, never attempt a text diff.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.nupkg binary
+*.dll  binary
+*.exe  binary
+*.pdb  binary
+*.snk  binary
