@@ -579,7 +579,7 @@ it will happily fall onto, and the strongly amplified configurations sit close t
 ## Verification
 
 `ClimateColumn.Tests` is an MSTest project running on MSTest's own runner, so both
-`dotnet test` and `dotnet run` work against it. 113 cases. The ones that matter are checks
+`dotnet test` and `dotnet run` work against it. 311 cases, plus 12 in `ClimateColumn.Charts.Tests`. The ones that matter are checks
 against results derived independently of the code:
 
 | Benchmark | Expected | Model |
@@ -701,7 +701,44 @@ The suite is organised by what it constrains — `AnalyticBenchmarkTests` and
 `SolverConsistencyTests` hold the assertions above, `ExtendedPhysicsTests` and `Co2Tests`
 the optional physics, `FullModelTests` the end-to-end budgets. Equilibrium runs are the
 expensive part and several tests need the same configurations, so `TestSupport.Equilibrium`
-memoises them; the whole suite takes about 5 seconds.
+memoises them. Runtime splits sharply on whether HITRAN data is present: without it the suite
+takes a few seconds, because every spectral test skips. With it, the converged CO₂ sweep alone is
+about 150 seconds and dominates everything else.
+
+### Continuous integration
+
+Two jobs, because the repository makes two promises worth checking separately.
+
+**`build and test`** runs on `windows-latest`, because `ClimateColumn.Charts` targets
+`net8.0-windows`. It restores, builds, runs both suites, then re-checks the documented
+equilibrium through the CLI — 286.797 K, 238.175 W m⁻², convecting to 3.44 km. Those three
+numbers are quoted throughout this README and nothing inside the suite pins all of them together
+from the outside.
+
+**`offline build, no package sources`** runs on `ubuntu-latest` and is the more interesting one.
+It restores `ClimateColumn.Core` and `ClimateColumn.Cli` against the committed `nuget.config`
+*as it stands*, with no source supplied — so it fails if either project ever acquires a package
+dependency. That is the claim which makes the model usable air-gapped, and it is exactly the kind
+of property that decays quietly. Running it on Linux also makes it a free check that the physics
+is platform-independent, which nothing else tested; the equilibrium is compared there with a
+0.01 tolerance rather than by string match, since `Math.Exp` and `Math.Pow` are not guaranteed
+bit-identical across platforms.
+
+`nuget.config` is left alone by both. It clears every package source deliberately, so the test job
+supplies nuget.org on the restore *command line*, which overrides the cleared sources for that one
+command without touching the offline-first configuration.
+
+**The skip counts are the evidence, not noise.** No line lists exist on a runner, so a green run
+reports:
+
+```
+main suite:  311 total, 0 failed, 270 succeeded, 41 skipped
+charts:       12 total, 0 failed,   9 succeeded,  3 skipped
+```
+
+Those 44 skips are every test that needs HITRAN data reporting itself inconclusive rather than
+failing. A passing build is therefore direct evidence that the no-data path still works — a
+guarantee that was previously only ever checked by hand.
 
 ---
 
