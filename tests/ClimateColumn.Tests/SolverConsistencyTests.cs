@@ -152,11 +152,17 @@ public class SolverConsistencyTests
     /// constraint on the recurrence rather than an identity.
     /// </summary>
     [DataTestMethod]
-    [DataRow(0.0)]
-    [DataRow(0.35)]
-    public void PerSegmentAbsorptionMinusEmissionEqualsFluxConvergence(double window)
+    [DataRow(0.0, 0.0)]
+    [DataRow(8.0, 13.0)]
+    public void PerSegmentAbsorptionMinusEmissionEqualsFluxConvergence(
+        double fromMicrons, double toMicrons)
     {
-        var column = Column.Build(new ModelOptions { SegmentCount = 30, WindowFraction = window });
+        var column = Column.Build(new ModelOptions
+        {
+            SegmentCount = 30,
+            WindowShortWavelength = fromMicrons * 1e-6,
+            WindowLongWavelength = toMicrons * 1e-6
+        });
         var rad = RadiationSolver.Solve(column);
 
         for (int i = 0; i < column.Count; i++)
@@ -173,11 +179,16 @@ public class SolverConsistencyTests
     /// the transparent flux appears in both the OLR and the surface upward flux and cancels.
     /// </summary>
     [DataTestMethod]
-    [DataRow(0.0)]
-    [DataRow(0.35)]
-    public void ColumnLongwaveBudgetTelescopes(double window)
+    [DataRow(0.0, 0.0)]
+    [DataRow(8.0, 13.0)]
+    public void ColumnLongwaveBudgetTelescopes(double fromMicrons, double toMicrons)
     {
-        var column = Column.Build(new ModelOptions { SegmentCount = 30, WindowFraction = window });
+        var column = Column.Build(new ModelOptions
+        {
+            SegmentCount = 30,
+            WindowShortWavelength = fromMicrons * 1e-6,
+            WindowLongWavelength = toMicrons * 1e-6
+        });
         var rad = RadiationSolver.Solve(column);
 
         double absorbed = 0.0, emitted = 0.0;

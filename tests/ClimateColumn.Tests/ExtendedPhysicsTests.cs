@@ -10,36 +10,83 @@ namespace ClimateColumn.Tests;
 [TestClass]
 public class ExtendedPhysicsTests
 {
+    /// <summary>
+    /// A window suppresses the forcing, and by an amount that a single window fraction cannot
+    /// reproduce - which is the whole point of making the share follow temperature.
+    /// </summary>
+    /// <remarks>
+    /// Under a flat fraction the suppression was exactly (1 - f), because f factored straight
+    /// out of every source term. It is tempting to assume the temperature-dependent case must
+    /// then be bracketed by (1 - f) at the profile's extremes, but that is false: the forcing
+    /// is linear in the per-segment band weights with <em>mixed signs</em>. Attenuating the
+    /// surface term raises the forcing while atmospheric emission compensates and lowers it,
+    /// so raising a cold segment's weight cuts the forcing. With no common sign there is no
+    /// convex combination and no bracketing - the measured suppression duly sits below even
+    /// the warmest single-temperature bound.
+    ///
+    /// What can be asserted is that the window suppresses, and that the suppression is
+    /// measurably different from what the surface's own share alone would predict. If it were
+    /// not, the temperature dependence would be cosmetic and the flat fraction would have been
+    /// good enough.
+    /// </remarks>
     [TestMethod]
-    public void WindowScalesTheForcingByExactlyOneMinusF()
+    public void WindowSuppressionCannotBeReproducedByASingleFraction()
     {
-        double Forcing(double window)
+        double Forcing(double fromMicrons, double toMicrons)
         {
-            var baseline = new ModelOptions { WindowFraction = window };
+            var baseline = new ModelOptions
+            {
+                WindowShortWavelength = fromMicrons * 1e-6,
+                WindowLongWavelength = toMicrons * 1e-6
+            };
             var doubled = baseline.Clone();
             doubled.OpticalDepthScale = 2.0;
             return TestSupport.InstantaneousForcing(baseline, doubled);
         }
 
-        double grey = Forcing(0.0);
+        double grey = Forcing(0.0, 0.0);
+        double windowed = Forcing(8.0, 13.0);
+        double suppression = windowed / grey;
 
         Assert.IsTrue(grey > 1.0, $"the grey doubling forcing must be positive ({grey:F2} W/m2)");
-        Assert.AreEqual(0.6, Forcing(0.4) / grey, 1e-9,
-            "at fixed temperature the window is an exact multiplicative factor on the forcing");
+        Assert.IsTrue(suppression < 1.0,
+            $"a window must suppress the forcing ({windowed:F2} vs {grey:F2} W/m2)");
+
+        var options = new ModelOptions
+        {
+            WindowShortWavelength = 8e-6, WindowLongWavelength = 13e-6
+        };
+        var column = Column.Build(options);
+        double flatFromSurface = 1.0 - options.WindowShare(column.SurfaceTemperature);
+
+        Assert.IsTrue(Math.Abs(suppression - flatFromSurface) > 0.02,
+            $"the suppression {suppression:F4} should differ measurably from the surface-only " +
+            $"prediction {flatFromSurface:F4}; if it did not, a flat fraction would suffice");
+
+        // Regression guard: an 8-13 um window is a substantial but not overwhelming cut.
+        Assert.IsTrue(suppression is > 0.4 and < 0.9,
+            $"suppression {suppression:F4} is outside the plausible range for an 8-13 um window");
     }
 
     [TestMethod]
     public void WindowEmissionEscapesAnOpaqueBand()
     {
-        var column = Column.Build(new ModelOptions
+        var options = new ModelOptions
         {
-            TotalOpticalDepth = 50.0, WindowFraction = 0.35, SegmentCount = 30
-        });
+            TotalOpticalDepth = 50.0,
+            WindowShortWavelength = 8e-6,
+            WindowLongWavelength = 13e-6,
+            SegmentCount = 30
+        };
+        var column = Column.Build(options);
         var rad = RadiationSolver.Solve(column);
 
-        double windowFlux = 0.35 * column.Options.SurfaceEmissivity *
+        // The share is the surface's own, since it is the surface's emission that escapes.
+        double share = options.WindowShare(column.SurfaceTemperature);
+        double windowFlux = share * options.SurfaceEmissivity *
                             RadiationSolver.StefanBoltzmannFlux(column.SurfaceTemperature);
 
+        Assert.IsTrue(share > 0.25, $"an 8-13 um window should be a substantial share ({share:F3})");
         Assert.IsTrue(rad.OutgoingLongwave >= windowFlux - 1e-9,
             $"the window share must escape however opaque the band is " +
             $"(OLR {rad.OutgoingLongwave:F1} vs window {windowFlux:F1} W/m2)");
@@ -49,11 +96,13 @@ public class ExtendedPhysicsTests
     public void FullyWindowedAirThatAbsorbsSunlightIsRejected()
     {
         // A transparent atmosphere that still absorbs sunlight has no way to shed that
-        // energy, so the integration would run away rather than find an equilibrium.
+        // energy, so the integration would run away rather than find an equilibrium. A window
+        // spanning the whole spectrum is how you express that here.
         Assert.ThrowsException<ArgumentException>(() =>
             ColumnModel.RunToEquilibrium(new ModelOptions
             {
-                WindowFraction = 1.0,
+                WindowShortWavelength = 1e-9,
+                WindowLongWavelength = 1e-2,
                 AtmosphericShortwaveFraction = 0.22
             }),
             "a window covering the whole spectrum must be rejected, not silently run away");

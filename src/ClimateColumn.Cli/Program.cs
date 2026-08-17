@@ -112,7 +112,9 @@ public static class Program
         Console.WriteLine("CO2 scenario");
         Console.WriteLine($"  reference {baseline.Co2ReferenceConcentration:F0} ppm = tau {baseline.TotalOpticalDepth:F3}, " +
                           $"CO2 share of the dry absorber {baseline.Co2AbsorberFraction:F2}, " +
-                          $"window {baseline.WindowFraction:F2}");
+                          (baseline.HasWindow
+                              ? $"window {baseline.WindowShortWavelength * 1e6:F1}-{baseline.WindowLongWavelength * 1e6:F1} um"
+                              : "no window"));
         Console.WriteLine();
         Console.WriteLine("   CO2 [ppm]   dry tau    T_s [K]   dT [K]   forcing [W/m2]   dT/dF [K/(W/m2)]");
 
@@ -235,7 +237,8 @@ public static class Program
             Co2Concentration = GetDouble(args, "co2-ppm", 285.0),
             Co2ReferenceConcentration = GetDouble(args, "co2-reference-ppm", 285.0),
             Co2AbsorberFraction = GetDouble(args, "co2-fraction", 1.0),
-            WindowFraction = GetDouble(args, "window", 0.0),
+            WindowShortWavelength = GetMicrons(args, "window-from-um", 0.0),
+            WindowLongWavelength = GetMicrons(args, "window-to-um", 0.0),
             PressureBroadeningExponent = GetDouble(args, "pressure-broadening", 0.0),
             OzoneFraction = GetDouble(args, "ozone-fraction", 0.0),
             OzoneLayerAltitude = GetDouble(args, "ozone-altitude-km", 25.0) * 1000.0,
@@ -262,6 +265,25 @@ public static class Program
         if (args.ContainsKey("isothermal")) o.InitialiseFromStandardAtmosphere = false;
 
         return o;
+    }
+
+    /// <summary>
+    /// Reads a wavelength given in microns and returns metres. Rejects the old
+    /// <c>--window</c> spelling explicitly, since silently reinterpreting a fraction as a
+    /// wavelength would produce a plausible-looking wrong answer.
+    /// </summary>
+    private static double GetMicrons(Dictionary<string, string> args, string key, double fallback)
+    {
+        if (args.ContainsKey("window"))
+        {
+            throw new ArgumentException(
+                "--window took a bare fraction of the spectrum, which is not well defined on " +
+                "its own: the share of emission inside a fixed wavelength interval depends on " +
+                "the emitter's temperature. Name the interval instead, e.g. " +
+                "--window-from-um 8 --window-to-um 13 for Earth's water-vapour window.");
+        }
+
+        return GetDouble(args, key, fallback) * 1e-6;
     }
 
     private static double GetDouble(Dictionary<string, string> args, string key, double fallback)
@@ -296,7 +318,8 @@ public static class Program
           --co2-reference-ppm X      ppm at which --optical-depth applies   (285)
           --co2-fraction X           CO2 share of dry absorber at ref ppm   (1.0)
           --co2-scenario A,B,C       equilibrium at each ppm, with forcings
-          --window X                 transparent fraction of the spectrum   (0)
+          --window-from-um X         transparent window, short edge, um     (none)
+          --window-to-um X           transparent window, long edge, um      (none)
           --pressure-broadening N    dry absorber ~ rho (p/p0)^N            (0)
           --ozone-fraction X         share of atm. solar into ozone layer   (0)
           --ozone-altitude-km X      Chapman layer peak altitude            (25)

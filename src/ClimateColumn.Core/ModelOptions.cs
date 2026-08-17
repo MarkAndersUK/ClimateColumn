@@ -77,10 +77,11 @@ public sealed class ModelOptions
     /// roughly an order of magnitude too large: about 54 W/m2 per doubling against the
     /// accepted 3.7. So a raw concentration run is not a credible estimate.
     ///
-    /// Two knobs bring the magnitude back, both multiplicative and neither distorting the
-    /// concentration dependence: <see cref="WindowFraction"/>, which scales every forcing by
-    /// exactly (1 - f) at fixed temperature, and <see cref="Co2AbsorberFraction"/>, which
-    /// says only part of the opacity is CO2 at all. The second is usually the better choice
+    /// Two knobs bring the magnitude back, neither distorting the concentration dependence
+    /// much: a spectral window (<see cref="WindowShortWavelength"/>), which suppresses every
+    /// forcing by roughly the share of the Planck function it removes, and
+    /// <see cref="Co2AbsorberFraction"/>, which says only part of the opacity is CO2 at all.
+    /// The second is usually the better choice
     /// for concentration work because it leaves the base state alone, whereas a large window
     /// cools the column badly. Calibrate one of them against a known forcing, then read the
     /// temperature response off the model's own dynamics.
@@ -110,14 +111,41 @@ public sealed class ModelOptions
     public double Co2AbsorberFraction { get; set; } = 1.0;
 
     /// <summary>
-    /// Fraction of the longwave spectrum lying in a transparent window where the absorber
-    /// neither absorbs nor emits. The remaining (1 - f) of the spectrum stays grey. 0 (the
-    /// default) is the pure grey model; Earth's water-vapour window is roughly 0.3 for the
-    /// surface Planck spectrum. The window fraction of the surface emission escapes to space
-    /// unattenuated, which is what tames the grey model's badly overstated doubling forcing:
-    /// the instantaneous forcing scales as exactly (1 - f).
+    /// Short-wavelength edge of the transparent spectral window, m. Zero width (the default,
+    /// with <see cref="WindowLongWavelength"/> also 0) is the pure grey model. Earth's
+    /// water-vapour window is about 8 to 13 um.
     /// </summary>
-    public double WindowFraction { get; set; } = 0.0;
+    /// <remarks>
+    /// The window is specified as an interval rather than as a fraction of the spectrum
+    /// because the fraction is not a property of the atmosphere alone - it depends on the
+    /// temperature of whatever is emitting. For 8-13 um it is 31.1 % of a 287 K surface's
+    /// emission and 20.0 % of a 217 K tropopause's. Naming the interval lets each emitter's
+    /// share follow from its own Planck function; naming a single fraction forces one
+    /// emitter's answer on all of them, and gets the cold end wrong by nearly a factor of two
+    /// exactly where the outgoing longwave is set.
+    ///
+    /// Inside the window the absorber neither absorbs nor emits, so the window share of the
+    /// surface emission escapes to space unattenuated. That is what tames the grey model's
+    /// badly overstated doubling forcing. Read the share back with
+    /// <see cref="WindowShare(double)"/>.
+    /// </remarks>
+    public double WindowShortWavelength { get; set; } = 0.0;
+
+    /// <summary>Long-wavelength edge of the transparent spectral window, m.</summary>
+    public double WindowLongWavelength { get; set; } = 0.0;
+
+    /// <summary>True when a window of non-zero width has been configured.</summary>
+    public bool HasWindow => WindowLongWavelength > WindowShortWavelength;
+
+    /// <summary>
+    /// Share of a blackbody's emission at <paramref name="temperature"/> (K) that falls inside
+    /// the window, and so escapes without interacting with the absorber. Zero when no window
+    /// is configured.
+    /// </summary>
+    public double WindowShare(double temperature) =>
+        HasWindow
+            ? Planck.FractionBetween(WindowShortWavelength, WindowLongWavelength, temperature)
+            : 0.0;
 
     /// <summary>
     /// Pressure-broadening exponent n: the dry absorber is distributed as
@@ -232,8 +260,13 @@ public sealed class ModelOptions
             throw new ArgumentException("SurfaceEmissivity must be in (0, 1].");
         if (TotalOpticalDepth < 0) throw new ArgumentException("TotalOpticalDepth must be >= 0.");
         if (Diffusivity <= 0) throw new ArgumentException("Diffusivity must be positive.");
-        if (WindowFraction is < 0 or > 1)
-            throw new ArgumentException("WindowFraction must be in [0, 1].");
+        if (WindowShortWavelength < 0)
+            throw new ArgumentException("WindowShortWavelength must be >= 0.");
+        if (WindowLongWavelength < 0)
+            throw new ArgumentException("WindowLongWavelength must be >= 0.");
+        if (WindowLongWavelength > 0 && WindowLongWavelength <= WindowShortWavelength)
+            throw new ArgumentException(
+                "WindowLongWavelength must be greater than WindowShortWavelength.");
         if (Co2Concentration < 0) throw new ArgumentException("Co2Concentration must be >= 0.");
         if (Co2ReferenceConcentration <= 0)
             throw new ArgumentException("Co2ReferenceConcentration must be positive.");
@@ -267,8 +300,11 @@ public sealed class ModelOptions
         // high temperatures. Transparency arises two ways: no absorber at all (dry and water
         // vapour both zero), or a window covering the whole spectrum. Reject the combination
         // rather than return a garbage state.
+        // The window share is evaluated at the starting surface temperature; a window wide
+        // enough to swallow the whole Planck function leaves the air unable to radiate at all.
         double absorber = EffectiveDryOpticalDepth + WaterVapourOpticalDepth;
-        if ((absorber <= 0.0 || WindowFraction >= 1.0) && AtmosphericShortwaveFraction > 0.0)
+        if ((absorber <= 0.0 || WindowShare(InitialSurfaceTemperature) >= 0.999) &&
+            AtmosphericShortwaveFraction > 0.0)
         {
             throw new ArgumentException(
                 "A longwave-transparent atmosphere (no absorber, or a window covering the " +

@@ -55,20 +55,26 @@ public sealed class RadiationResult
 /// The surface is a Stefan-Boltzmann emitter with emissivity eps_s, and reflects the
 /// remaining (1 - eps_s) of the incident longwave.
 ///
-/// An optional spectral window (Options.WindowFraction) splits the spectrum in two: a
-/// fraction f where the absorber is fully transparent, and the remaining (1 - f) which
-/// stays grey. Every Planck source term in the recurrence is scaled by (1 - f), and the
-/// window share of the surface emission, f eps_s sigma Ts^4, escapes to space unattenuated
-/// and altitude-independent - the atmosphere neither absorbs nor emits there, so the window
-/// contributes nothing to any flux divergence.
+/// An optional spectral window splits the spectrum in two: a wavelength interval where the
+/// absorber is fully transparent, and everything else, which stays grey. The window share of
+/// the surface emission escapes to space unattenuated and altitude-independent - the
+/// atmosphere neither absorbs nor emits there, so the window contributes nothing to any flux
+/// divergence.
+///
+/// The share is evaluated from each emitter's own temperature rather than being a single
+/// number for the whole column, because the fraction of a Planck function inside a fixed
+/// wavelength interval depends strongly on how hot the emitter is. Every source term
+/// therefore carries its own weight (1 - f(T)), and the surface splits its emission by
+/// f(T_s). Each emitter still divides exactly its own sigma T^4 between band and window, so
+/// energy closure is unaffected.
 /// </summary>
 public static class RadiationSolver
 {
     public static RadiationResult Solve(Column column)
     {
         int n = column.Count;
-        double d = column.Options.Diffusivity;
-        double band = 1.0 - column.Options.WindowFraction;
+        var options = column.Options;
+        double d = options.Diffusivity;
         var segments = column.Segments;
 
         var tau = new double[n];
@@ -76,12 +82,16 @@ public static class RadiationSolver
         var absorptivity = new double[n];
         var blackbody = new double[n];
 
+        // In-band share of each segment's own Planck function.
+        var band = new double[n];
+
         for (int i = 0; i < n; i++)
         {
             tau[i] = segments[i].OpticalThickness(d);
             transmittance[i] = Math.Exp(-tau[i]);
             absorptivity[i] = 1.0 - transmittance[i];
             blackbody[i] = segments[i].BlackbodyEmissivePower;
+            band[i] = 1.0 - options.WindowShare(segments[i].Temperature);
         }
 
         var down = new double[n + 1];
@@ -92,21 +102,23 @@ public static class RadiationSolver
         down[n] = 0.0;
         for (int i = n - 1; i >= 0; i--)
         {
-            down[i] = down[i + 1] * transmittance[i] + absorptivity[i] * band * blackbody[i];
+            down[i] = down[i + 1] * transmittance[i] + absorptivity[i] * band[i] * blackbody[i];
         }
 
         // Surface: Stefan-Boltzmann emission plus specular reflection of the back radiation.
         // The up recurrence carries the grey band only; the window share of the surface
         // emission passes through untouched and is added onto the reported fluxes below.
-        double epsS = column.Options.SurfaceEmissivity;
+        double epsS = options.SurfaceEmissivity;
         double surfaceBlackbody = PhysicalConstants.StefanBoltzmann *
                                   Math.Pow(column.SurfaceTemperature, 4);
-        double windowFlux = epsS * (1.0 - band) * surfaceBlackbody;
-        up[0] = epsS * band * surfaceBlackbody + (1.0 - epsS) * down[0];
+        double surfaceWindow = options.WindowShare(column.SurfaceTemperature);
+
+        double windowFlux = epsS * surfaceWindow * surfaceBlackbody;
+        up[0] = epsS * (1.0 - surfaceWindow) * surfaceBlackbody + (1.0 - epsS) * down[0];
 
         for (int i = 0; i < n; i++)
         {
-            up[i + 1] = up[i] * transmittance[i] + absorptivity[i] * band * blackbody[i];
+            up[i + 1] = up[i] * transmittance[i] + absorptivity[i] * band[i] * blackbody[i];
         }
 
         var heating = new double[n];
@@ -121,7 +133,7 @@ public static class RadiationSolver
             absorbed[i] = absorptivity[i] * (up[i] + down[i + 1]);
 
             // Emission is shared equally between the two hemispheres.
-            emission[i] = 2.0 * absorptivity[i] * band * blackbody[i];
+            emission[i] = 2.0 * absorptivity[i] * band[i] * blackbody[i];
             koenigsberger[i] = segments[i].KoenigsbergerEmission;
         }
 

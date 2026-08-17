@@ -109,17 +109,28 @@ public class AnalyticBenchmarkTests
     }
 
     /// <summary>
-    /// One slab opaque in the grey band over a black surface, under a window covering
-    /// fraction f of the spectrum. The slab budget gives sigma Ta^4 = sigma Ts^4 / 2
-    /// regardless of f, and the TOA balance F0 = (1-f) sigma Ta^4 + f sigma Ts^4 then yields
-    /// Ts = (2 / (1 + f))^(1/4) Te - the classic 2^(1/4) Te at f = 0, collapsing to Te at
-    /// f = 1.
+    /// One slab opaque in the grey band over a black surface, under a transparent window.
+    /// The slab neither emits nor absorbs inside the window, so it absorbs the band share of
+    /// the surface emission and re-emits it both ways:
+    ///
+    ///   (1 - f(Ts)) sigma Ts^4 = 2 (1 - f(Ta)) sigma Ta^4
+    ///
+    /// and at the top the escaping flux is the slab's band emission plus the surface's window
+    /// emission, F0 = (1 - f(Ta)) sigma Ta^4 + f(Ts) sigma Ts^4. Eliminating the slab gives
+    ///
+    ///   Ts = (2 / (1 + f(Ts)))^(1/4) Te
+    ///
+    /// which is the same closed form as for a flat window, except that f is now evaluated at
+    /// the surface's own temperature - so it is implicit in Ts and has to be solved for. That
+    /// makes it a stronger benchmark than the flat-window version, where f was simply whatever
+    /// the caller passed in.
     /// </summary>
     [DataTestMethod]
-    [DataRow(0.0)]
-    [DataRow(0.2)]
-    [DataRow(0.5)]
-    public void WindowedOpaqueSlabMatchesTheAnalyticSolution(double window)
+    [DataRow(0.0, 0.0, "no window")]
+    [DataRow(8.0, 13.0, "Earth's water-vapour window")]
+    [DataRow(8.0, 20.0, "a deliberately wide window")]
+    public void WindowedOpaqueSlabMatchesTheAnalyticSolution(
+        double fromMicrons, double toMicrons, string description)
     {
         var options = new ModelOptions
         {
@@ -128,7 +139,8 @@ public class AnalyticBenchmarkTests
             AtmosphericShortwaveFraction = 0.0,
             SurfaceEmissivity = 1.0,
             Convection = ConvectionMode.None,
-            WindowFraction = window,
+            WindowShortWavelength = fromMicrons * 1e-6,
+            WindowLongWavelength = toMicrons * 1e-6,
             FluxTolerance = 1e-5,
             TemperatureTolerance = 1e-8
         };
@@ -136,13 +148,72 @@ public class AnalyticBenchmarkTests
         foreach (var s in column.Segments) s.EmissionCoefficient = 1.0;   // dtau >> 1
 
         var result = new ColumnModel(column).Run();
+        Assert.IsTrue(result.Converged, $"windowed slab ({description}) must converge");
 
-        Assert.IsTrue(result.Converged, $"windowed slab (f = {window}) must converge");
-        Assert.AreEqual(Math.Pow(2.0 / (1.0 + window), 0.25) * options.EmissionTemperature,
-            result.SurfaceTemperature, 0.05,
-            $"windowed slab: Ts = (2/(1+{window}))^(1/4) Te");
-        Assert.AreEqual(Math.Pow(0.5, 0.25) * result.SurfaceTemperature,
-            column.Segments[0].Temperature, 0.05,
-            $"windowed slab (f = {window}): the slab sits at (1/2)^(1/4) Ts regardless of f");
+        // Ts = (2 / (1 + f(Ts)))^(1/4) Te, solved by fixed-point iteration from the
+        // no-window answer. The map is a mild contraction here, so this settles quickly.
+        double te = options.EmissionTemperature;
+        double analytic = Math.Pow(2.0, 0.25) * te;
+        for (int i = 0; i < 200; i++)
+        {
+            double next = Math.Pow(2.0 / (1.0 + options.WindowShare(analytic)), 0.25) * te;
+            if (Math.Abs(next - analytic) < 1e-10) { analytic = next; break; }
+            analytic = next;
+        }
+
+        Assert.AreEqual(analytic, result.SurfaceTemperature, 0.05,
+            $"{description}: Ts = (2/(1+f(Ts)))^(1/4) Te  (f(Ts) = {options.WindowShare(analytic):F4})");
+
+        // The slab's own budget, checked directly against the model's temperatures rather
+        // than against a closed form for Ta, which is implicit too.
+        double slabTemperature = column.Segments[0].Temperature;
+        double fromSurface = (1.0 - options.WindowShare(result.SurfaceTemperature)) *
+                             RadiationSolver.StefanBoltzmannFlux(result.SurfaceTemperature);
+        double slabEmission = 2.0 * (1.0 - options.WindowShare(slabTemperature)) *
+                              RadiationSolver.StefanBoltzmannFlux(slabTemperature);
+
+        Assert.AreEqual(fromSurface, slabEmission, 0.2,
+            $"{description}: the slab must re-emit exactly the band flux it absorbs");
+    }
+
+    /// <summary>
+    /// The window share has to come from the emitter's temperature, not from the column as a
+    /// whole. Checked against values computed independently of the model.
+    /// </summary>
+    [DataTestMethod]
+    [DataRow(8.0, 13.0, 286.8, 0.3105)]
+    [DataRow(8.0, 13.0, 216.7, 0.1998)]
+    [DataRow(8.0, 12.0, 286.8, 0.2517)]
+    [DataRow(8.0, 12.0, 216.7, 0.1513)]
+    public void WindowShareFollowsThePlanckFunction(
+        double fromMicrons, double toMicrons, double temperature, double expected)
+    {
+        double share = Planck.FractionBetween(fromMicrons * 1e-6, toMicrons * 1e-6, temperature);
+
+        Assert.AreEqual(expected, share, 0.002,
+            $"share of {fromMicrons}-{toMicrons} um at {temperature} K");
+    }
+
+    [TestMethod]
+    public void WholeSpectrumIntegratesToOne()
+    {
+        // A window spanning everything must capture the entire Planck function, and the
+        // fraction below any cut must be monotonic in that cut.
+        Assert.AreEqual(1.0, Planck.FractionBetween(1e-9, 1e-2, 288.0), 1e-6,
+            "0.001 to 10000 um should capture all of it");
+
+        double previous = 0.0;
+        for (double micron = 1.0; micron <= 60.0; micron += 1.0)
+        {
+            double below = Planck.FractionBelow(micron * 1e-6 * 288.0);
+            Assert.IsTrue(below >= previous - 1e-12,
+                $"the fraction below {micron} um must not decrease");
+            previous = below;
+        }
+
+        // 97.9 % of a 288 K Planck function lies below 60 um; the far-infrared tail is long.
+        Assert.AreEqual(0.9786, previous, 0.002, $"fraction below 60 um at 288 K");
+        Assert.IsTrue(Planck.FractionBelow(200e-6 * 288.0) > 0.999,
+            "by 200 um essentially all of it is below the cut");
     }
 }

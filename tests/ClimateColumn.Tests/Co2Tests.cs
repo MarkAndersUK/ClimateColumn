@@ -103,9 +103,19 @@ public class Co2Tests
             $"({present.SurfaceTemperature - preIndustrial.SurfaceTemperature:F3} K)");
     }
 
-    private static double ForcingBetween(double from, double to, double window)
+    /// <summary>
+    /// Forcing between two concentrations, optionally under a transparent window given as a
+    /// wavelength interval in microns. A zero-width interval means no window.
+    /// </summary>
+    private static double ForcingBetween(double from, double to,
+        double windowFromMicrons = 0.0, double windowToMicrons = 0.0)
     {
-        var baseline = new ModelOptions { WindowFraction = window, Co2Concentration = from };
+        var baseline = new ModelOptions
+        {
+            WindowShortWavelength = windowFromMicrons * 1e-6,
+            WindowLongWavelength = windowToMicrons * 1e-6,
+            Co2Concentration = from
+        };
         var perturbed = baseline.Clone();
         perturbed.Co2Concentration = to;
         return TestSupport.InstantaneousForcing(baseline, perturbed);
@@ -119,30 +129,65 @@ public class Co2Tests
     [TestMethod]
     public void SuccessiveDoublingsGiveDiminishingForcing()
     {
-        double ratio = ForcingBetween(570, 1140, 0.0) / ForcingBetween(285, 570, 0.0);
+        double ratio = ForcingBetween(570, 1140) / ForcingBetween(285, 570);
 
         Assert.IsTrue(ratio < 0.9, $"the grey column must saturate with concentration (ratio {ratio:F3})");
     }
 
     /// <summary>
     /// This is what makes the window a legitimate calibration knob rather than a distortion:
-    /// it fixes the magnitude of the forcing without touching its concentration dependence.
+    /// it lowers the magnitude of the forcing without materially reshaping its concentration
+    /// dependence.
     /// </summary>
+    /// <remarks>
+    /// Under a flat window fraction the saturation ratio was preserved to machine precision,
+    /// because f factored out of every source term and cancelled in the ratio. With f
+    /// following each emitter's temperature the cancellation is no longer exact - the two
+    /// doublings shift the emission level, and the window share differs slightly between the
+    /// levels they emit from. The shape is still very nearly preserved, which is the property
+    /// that matters, but the honest tolerance is a small percentage rather than 1e-9.
+    /// </remarks>
     [TestMethod]
-    public void WindowLeavesTheSaturationRatioUnchanged()
+    public void WindowNearlyPreservesTheSaturationRatio()
     {
-        double grey = ForcingBetween(570, 1140, 0.0) / ForcingBetween(285, 570, 0.0);
-        double windowed = ForcingBetween(570, 1140, 0.6) / ForcingBetween(285, 570, 0.6);
+        double grey = ForcingBetween(570, 1140) / ForcingBetween(285, 570);
+        double windowed = ForcingBetween(570, 1140, 8.0, 13.0) / ForcingBetween(285, 570, 8.0, 13.0);
 
-        Assert.AreEqual(grey, windowed, 1e-9,
-            "the window must scale forcings, not reshape their concentration dependence");
+        Assert.AreEqual(grey, windowed, 0.03 * grey,
+            $"the window should not materially reshape the concentration dependence " +
+            $"(grey {grey:F4} vs windowed {windowed:F4})");
     }
 
+    /// <summary>
+    /// The window suppresses the CO2 forcing, and the suppression is stronger than the
+    /// surface's own window share alone would give.
+    /// </summary>
+    /// <remarks>
+    /// The forcing is linear in the per-segment band weights but with mixed signs - the
+    /// surface term raises it, atmospheric emission compensates and lowers it - so the
+    /// suppression is not a convex combination of the (1 - f) values and is not bracketed by
+    /// them. See the corresponding note in ExtendedPhysicsTests.
+    /// </remarks>
     [TestMethod]
-    public void WindowScalesTheCo2ForcingByExactlyOneMinusF()
+    public void WindowSuppressesTheCo2Forcing()
     {
-        Assert.AreEqual(0.6, ForcingBetween(285, 425, 0.4) / ForcingBetween(285, 425, 0.0), 1e-9,
-            "at fixed temperature the window is an exact multiplicative factor");
+        double grey = ForcingBetween(285, 425);
+        double windowed = ForcingBetween(285, 425, 8.0, 13.0);
+        double suppression = windowed / grey;
+
+        var options = new ModelOptions
+        {
+            WindowShortWavelength = 8e-6, WindowLongWavelength = 13e-6
+        };
+        double surfaceOnly = 1.0 - options.WindowShare(286.8);
+
+        Assert.IsTrue(suppression < 1.0,
+            $"a window must suppress the forcing (factor {suppression:F4})");
+        Assert.IsTrue(suppression < surfaceOnly,
+            $"the colder emitters should deepen the cut beyond the surface-only prediction " +
+            $"({suppression:F4} vs {surfaceOnly:F4})");
+        Assert.IsTrue(suppression is > 0.4 and < 0.9,
+            $"suppression {suppression:F4} is outside the plausible range for an 8-13 um window");
     }
 
     /// <summary>

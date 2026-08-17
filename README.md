@@ -81,17 +81,45 @@ well would double count that transfer and leave the surface energy budget open.
 Four optional pieces of physics, all off by default, so the baseline above is unchanged
 unless you ask for them.
 
-**A spectral window** (`--window f`). A fraction $f$ of the longwave spectrum is made
-transparent and the remaining $(1-f)$ stays grey. Every Planck source in the recurrence is
-scaled by $(1-f)$, and the window share of the surface emission, $f\varepsilon_s\sigma
-T_s^4$, escapes to space unattenuated. Because it is the same at every interface it drops
-out of the flux divergence, so it warms nothing on the way up — which is the point. A one
-slab column then equilibrates at
+**A spectral window** (`--window-from-um`, `--window-to-um`). A wavelength interval is made
+transparent and the rest of the spectrum stays grey. The window share of the surface
+emission escapes to space unattenuated; because it is the same at every interface it drops
+out of the flux divergence, so it warms nothing on the way up — which is the point.
 
-$$T_s = \left(\frac{2}{1+f}\right)^{1/4} T_e,$$
+The window is specified as an **interval, not a fraction**, because a fraction is not a
+property of the atmosphere on its own — it depends on the temperature of whatever is
+emitting. For 8–13 µm:
 
-recovering the classic $2^{1/4}T_e$ at $f=0$ and collapsing to $T_e$ at $f=1$. Both limits
-are asserted in the tests.
+| | share of emission |
+|---|---|
+| 287 K surface | 31.1 % |
+| 255 K emission temperature | 27.0 % |
+| 217 K tropopause | 20.0 % |
+
+A single number is therefore wrong at one end by more than a factor of 1.5, and the cold end
+is exactly where the outgoing longwave is set. Each emitter's share instead follows from its
+own Planck function via the fractional-blackbody integral, which depends only on the product
+$\lambda T$ — so one series evaluation covers every wavelength and temperature. Every source
+term carries its own $(1-f(T))$, and each emitter still divides exactly its own $\sigma T^4$
+between band and window, so energy closure is untouched.
+
+The one-slab benchmark survives, with $f$ now evaluated at the surface's own temperature:
+
+$$T_s = \left(\frac{2}{1+f(T_s)}\right)^{1/4} T_e.$$
+
+That is implicit in $T_s$ and has to be solved for, which makes it a **stronger** test than
+the flat-window version, where $f$ was simply whatever the caller passed in. It still
+recovers the classic $2^{1/4}T_e$ for no window.
+
+One clean identity is genuinely lost. Under a flat fraction the instantaneous forcing scaled
+as exactly $(1-f)$, because $f$ factored out of every source term. It no longer does. It is
+tempting to assume the suppression must then be bracketed by $(1-f)$ at the profile's
+extremes, but that is false: the forcing is linear in the per-segment band weights with
+**mixed signs** — attenuating the surface term raises it while atmospheric emission
+compensates and lowers it — so there is no convex combination and no bracket. The measured
+suppression duly sits below even the warmest single-temperature bound. What the tests assert
+instead is that the suppression is measurably different from what the surface's share alone
+would predict; if it were not, the temperature dependence would be cosmetic.
 
 **Pressure broadening** (`--pressure-broadening n`). The dry absorber is distributed as
 $\varepsilon' \sim \rho\,(p/p_0)^n$ rather than $\varepsilon' \sim \rho$, renormalised to
@@ -130,11 +158,12 @@ against results derived independently of the code:
 | Transparent atmosphere | $T_s = T_e$ | exact to 10⁻³ K |
 | One opaque slab | $T_s = 2^{1/4}T_e$ | ✓ |
 | $N$ opaque slabs | $T_s = (N{+}1)^{1/4}T_e$, layer $k$ from top at $k^{1/4}T_e$ | ✓ for $N = 1,2,4$ |
-| Opaque slab under a window | $T_s = \left(2/(1{+}f)\right)^{1/4}T_e$ | ✓ for $f = 0, 0.2, 0.5$ |
+| Opaque slab under a window | $T_s = \left(2/(1{+}f(T_s))\right)^{1/4}T_e$, solved implicitly | ✓ for no window, 8–13 µm, 8–20 µm |
+| Fractional Planck function | 8–13 µm holds 31.05 % at 287 K, 19.98 % at 217 K | within 0.002 |
 | Grey radiative equilibrium | $\sigma T_s^4 = F_0\left(1 + \tau/2\right)$ | within 0.05 K for $\tau = 0.5, 1.8, 4$ |
 | Thin-layer limit | $2\left(1-e^{-\tau}\right)\sigma T^4 \to 4\varepsilon'\sigma T^4\mathrm{d}z$ only at $D = 2$ | ratio 1.000 at $D{=}2$, 0.830 at $D{=}1.66$ |
 | Isothermal subdivision | slicing one isothermal slab must not change any flux | bit-identical for $n = 1 \ldots 256$ |
-| Window scaling | forcing must scale as exactly $(1-f)$ at fixed temperature | exact to 10⁻⁹ |
+| Window suppression | must differ from the surface-share prediction, so $f(T)$ is not cosmetic | ✓ |
 | Clausius–Clapeyron | 5 K warming multiplies the vapour loading by $e^{L/R_v(1/T - 1/T')}$ | exact to 10⁻⁶ |
 | US Standard Atmosphere | $p(11\,\text{km}) = 22632$ Pa, $\rho_0 = 1.225$ kg m⁻³ | ✓ |
 
@@ -207,9 +236,9 @@ constant per doubling). **The failure is one of magnitude, about a factor of 13,
 shape.**
 
 That distinction matters because a magnitude error can be calibrated out without distorting
-the concentration dependence. Two knobs do it multiplicatively: `--window`, which scales
-every forcing by exactly $(1-f)$, and `--co2-fraction`, which says only part of the opacity
-is CO₂ in the first place. The second is the better choice here — a window large enough to
+the concentration dependence much. Two knobs do it: a spectral window, which suppresses every
+forcing by roughly the share of the Planck function it removes, and `--co2-fraction`, which
+says only part of the opacity is CO₂ in the first place. The second is the better choice here — a window large enough to
 fix the magnitude also freezes the column, whereas the CO₂ share leaves the base state
 alone.
 
@@ -351,7 +380,8 @@ that drawing path verifiable and gives documentation shots a way to include it.
 --co2-reference-ppm X      ppm at which --optical-depth applies   (285)
 --co2-fraction X           CO2 share of dry absorber at ref ppm   (1.0)
 --co2-scenario A,B,C       equilibrium at each ppm, with forcings
---window X                 transparent fraction of the spectrum   (0)
+--window-from-um X         transparent window, short edge, um     (none)
+--window-to-um X           transparent window, long edge, um      (none)
 --pressure-broadening N    dry absorber ~ rho (p/p0)^N            (0)
 --ozone-fraction X         share of atm. solar into ozone layer   (0)
 --ozone-altitude-km X      Chapman layer peak altitude            (25)
@@ -453,10 +483,19 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 
 ## Known limitations
 
-- **Grey, or at best two-band.** `--window` splits the spectrum into one grey band and one
+- **Grey, or at best two-band.** The window splits the spectrum into one grey band and one
   transparent one; that is still nothing like a real absorption spectrum. It is why the raw
   doubling forcing is an order of magnitude too large, and why the CO₂ runs above have to
-  be calibrated against a known forcing rather than predicting one.
+  be calibrated against a known forcing rather than predicting one. The window's *share* is
+  now computed properly from the Planck function, but the window itself is still perfectly
+  transparent — the water-vapour continuum that actually closes the 8–13 µm window in the
+  humid tropics is absent, so the window never shuts. Within the grey band, line structure is
+  ignored entirely; a k-distribution is what a rigorous treatment would need.
+- **The diffusivity is band-independent.** $D = 2$ is exact in the optically *thin* limit,
+  which makes it the worst choice for opaque band centres. One $D$ cannot be right for bands
+  spanning $\tau \ll 1$ to $\tau \gg 1$; the exact $2E_3(\tau)$ transmission would be needed.
+- **Nothing is checked against a line-by-line reference.** The window benchmarks verify the
+  algebra and the Planck integral, not whether the resulting spectrum resembles Earth's.
 - **The water vapour feedback is crude.** It is on by loading only: a single column-integrated
   $\tau_v$ following Clausius–Clapeyron on the near-surface air temperature, with a fixed
   vertical shape and no relative humidity profile, no advection, and no distinction between

@@ -85,8 +85,15 @@ public static class Reporting
         if (Math.Abs(o.Co2Concentration - o.Co2ReferenceConcentration) > 1e-9)
             sb.AppendLine($"  CO2                       : {o.Co2Concentration:F1} ppm vs {o.Co2ReferenceConcentration:F1} ppm reference  " +
                           $"(dry tau {o.TotalOpticalDepth * o.OpticalDepthScale:F4} -> {o.EffectiveDryOpticalDepth:F4})");
-        if (o.WindowFraction > 0)
-            sb.AppendLine($"  spectral window           : {o.WindowFraction:F3} of the spectrum is transparent");
+        if (o.HasWindow)
+        {
+            sb.AppendLine($"  spectral window           : {o.WindowShortWavelength * 1e6:F1} - " +
+                          $"{o.WindowLongWavelength * 1e6:F1} um transparent");
+            sb.AppendLine($"    ... share at surface    : {o.WindowShare(result.SurfaceTemperature):F3}" +
+                          $"  (of the surface's own emission)");
+            sb.AppendLine($"    ... share at column top : {o.WindowShare(result.Column.Segments[^1].Temperature):F3}" +
+                          $"  (colder, so a smaller share)");
+        }
         if (o.PressureBroadeningExponent > 0)
             sb.AppendLine($"  pressure broadening       : eps' ~ rho (p/p0)^{o.PressureBroadeningExponent:F2}");
         if (o.OzoneFraction > 0)
@@ -96,11 +103,12 @@ public static class Reporting
             sb.AppendLine($"  water vapour tau          : {result.Column.CurrentWaterVapourOpticalDepth():F4} now  " +
                           $"({o.WaterVapourOpticalDepth:F4} at {o.WaterVapourReferenceTemperature:F2} K, feedback on)");
 
-        if (o.WindowFraction > 0)
+        if (o.HasWindow)
         {
             sb.AppendLine();
-            sb.AppendLine($"  NOTE: with a spectral window the solver's emission per segment is");
-            sb.AppendLine($"        (1 - {o.WindowFraction:F3}) x the full-spectrum Koenigsberger column 4e'sT^4dz.");
+            sb.AppendLine("  NOTE: with a spectral window each segment's emission is (1 - f(T)) x the");
+            sb.AppendLine("        full-spectrum Koenigsberger column 4e'sT^4dz, with f evaluated at that");
+            sb.AppendLine("        segment's own temperature, so the ratio varies down the column.");
         }
 
         if (!IsKoenigsbergerDiffusivity(o))
