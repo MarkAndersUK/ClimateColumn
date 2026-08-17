@@ -205,8 +205,23 @@ public sealed class ModelOptions
     /// </summary>
     public int KDistributionPoints { get; set; } = 16;
 
+    /// <summary>
+    /// A quadrature measured from a real spectrum, used in place of the parametric shape above
+    /// when set.
+    /// </summary>
+    /// <remarks>
+    /// Worth preferring when you have line data, because the parametric families do not fit a
+    /// real band well. Measured against HITRAN's CO2 15 um band, the best-fitting lognormal
+    /// width drifts from about 1.7 at low optical depth to 1.25 at high, and no single value
+    /// does better than about 0.03 in transmission - whereas the band's own measured
+    /// distribution reaches 0.003 with 32 g-points. Build one with
+    /// <see cref="LineByLineBand.ToKDistribution"/>.
+    /// </remarks>
+    public KDistribution? MeasuredKDistribution { get; set; }
+
     /// <summary>Builds the quadrature these options describe.</summary>
     public KDistribution BuildKDistribution() =>
+        MeasuredKDistribution ??
         KDistribution.Build(KDistributionShape, KDistributionWidth, KDistributionPoints);
 
     /// <summary>True when a window of non-zero width has been configured.</summary>

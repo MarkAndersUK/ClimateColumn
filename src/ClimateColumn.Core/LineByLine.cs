@@ -104,6 +104,38 @@ public sealed class LineByLineBand
     }
 
     /// <summary>
+    /// Builds a band from an explicit line list - HITRAN data, or anything else.
+    /// </summary>
+    /// <param name="lines">The lines, including any lying outside the evaluated interval.</param>
+    /// <param name="start">Lower edge of the evaluated band, cm^-1.</param>
+    /// <param name="end">Upper edge, cm^-1.</param>
+    /// <param name="samples">Wavenumber samples across the band.</param>
+    /// <param name="wingCutoff">
+    /// How far from its centre a line is still evaluated, cm^-1. Real line lists are large
+    /// enough that evaluating every line at every sample is not affordable, and truncating the
+    /// wings is what every line-by-line code does; 25 cm^-1 is the usual choice. Infinity keeps
+    /// every line everywhere, which is what the synthetic band uses.
+    /// </param>
+    public static LineByLineBand FromLines(
+        IReadOnlyList<SpectralLine> lines, double start, double end, int samples,
+        double wingCutoff = double.PositiveInfinity)
+    {
+        if (end <= start) throw new ArgumentException("end must exceed start.");
+        if (samples < 2) throw new ArgumentException("samples must be >= 2.");
+        if (lines.Count == 0) throw new ArgumentException("at least one line is needed.");
+        if (wingCutoff <= 0) throw new ArgumentException("wingCutoff must be positive.");
+
+        var grid = new double[samples];
+        double step = (end - start) / samples;
+        for (int i = 0; i < samples; i++) grid[i] = start + (i + 0.5) * step;
+
+        return new LineByLineBand(grid, lines.ToArray(), start, end) { WingCutoff = wingCutoff };
+    }
+
+    /// <summary>How far from its centre a line is evaluated, cm^-1.</summary>
+    public double WingCutoff { get; private init; } = double.PositiveInfinity;
+
+    /// <summary>
     /// Absorption coefficient at every wavenumber sample, for a path at
     /// <paramref name="pressureRatio"/> times the reference pressure, normalised so that the
     /// band mean at the reference pressure is exactly 1.
@@ -120,22 +152,7 @@ public sealed class LineByLineBand
     {
         if (pressureRatio <= 0) throw new ArgumentException("pressureRatio must be positive.");
 
-        var k = new double[_wavenumbers.Length];
-
-        for (int i = 0; i < _wavenumbers.Length; i++)
-        {
-            double nu = _wavenumbers[i];
-            double sum = 0.0;
-
-            foreach (var line in _lines)
-            {
-                double gamma = line.HalfWidth * pressureRatio;
-                double offset = nu - line.Wavenumber;
-                sum += line.Strength * gamma / (Math.PI * (offset * offset + gamma * gamma));
-            }
-
-            k[i] = sum;
-        }
+        var k = Accumulate(pressureRatio);
 
         // Normalise by the reference-pressure band mean so results are dimensionless. The
         // reference mean is used at every pressure, since area-normalised broadening leaves it
@@ -149,25 +166,60 @@ public sealed class LineByLineBand
         return k;
     }
 
+    /// <summary>
+    /// Sums the Lorentz profiles onto the wavenumber grid.
+    /// </summary>
+    /// <remarks>
+    /// Scatters each line onto the samples within its cutoff rather than looping every line
+    /// over every sample. With a real line list the difference is decisive: 28,000 CO2 lines
+    /// against 90,000 samples is billions of evaluations the direct way, and a fraction of that
+    /// once each line only touches its own neighbourhood.
+    /// </remarks>
+    private double[] Accumulate(double pressureRatio)
+    {
+        var k = new double[_wavenumbers.Length];
+        if (_wavenumbers.Length < 2) return k;
+
+        double step = _wavenumbers[1] - _wavenumbers[0];
+        double first = _wavenumbers[0];
+
+        foreach (var line in _lines)
+        {
+            double gamma = line.HalfWidth * pressureRatio;
+            double gammaSquared = gamma * gamma;
+            double amplitude = line.Strength * gamma / Math.PI;
+
+            int from = 0, to = k.Length - 1;
+            if (!double.IsPositiveInfinity(WingCutoff))
+            {
+                from = (int)Math.Ceiling((line.Wavenumber - WingCutoff - first) / step);
+                to = (int)Math.Floor((line.Wavenumber + WingCutoff - first) / step);
+                if (from < 0) from = 0;
+                if (to > k.Length - 1) to = k.Length - 1;
+            }
+
+            for (int i = from; i <= to; i++)
+            {
+                double offset = _wavenumbers[i] - line.Wavenumber;
+                k[i] += amplitude / (offset * offset + gammaSquared);
+            }
+        }
+
+        return k;
+    }
+
     private double? _referenceMean;
 
     private double BandMeanAtReference()
     {
         if (_referenceMean is double cached) return cached;
 
-        double sum = 0.0;
-        for (int i = 0; i < _wavenumbers.Length; i++)
-        {
-            double nu = _wavenumbers[i];
-            foreach (var line in _lines)
-            {
-                double gamma = line.HalfWidth;
-                double offset = nu - line.Wavenumber;
-                sum += line.Strength * gamma / (Math.PI * (offset * offset + gamma * gamma));
-            }
-        }
+        var k = Accumulate(1.0);
 
-        double mean = sum / _wavenumbers.Length;
+        double sum = 0.0;
+        foreach (double value in k) sum += value;
+
+        double mean = sum / k.Length;
         _referenceMean = mean;
         return mean;
     }

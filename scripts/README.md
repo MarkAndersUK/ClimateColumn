@@ -1,5 +1,25 @@
 # scripts
 
+## fetch-hitran.ps1
+
+Downloads a HITRAN line list so the band approximations can be checked against real spectral
+data rather than only against synthetic lines.
+
+```bash
+pwsh scripts/fetch-hitran.ps1
+```
+
+No API key is needed — hitran.org's line-by-line endpoint serves this anonymously; a key is only
+required for the HAPI2 client library. There is a daily request limit, so don't loop it.
+
+The data is **not committed**. It is third-party data with its own citation requirement, and
+leaving it out keeps the repository testable with no network and no external files: the tests
+that want real lines skip when it is missing rather than failing. `data/` is already covered by
+the `*.csv` ignore rule.
+
+Cite HITRAN in published work: Gordon et al., *JQSRT* **277**, 107949 (2022).
+
+
 ## populate-package-cache.ps1
 
 `nuget.config` clears every package source. That is deliberate: nothing in this repository

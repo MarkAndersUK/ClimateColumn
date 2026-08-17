@@ -288,6 +288,44 @@ smaller than ignoring the structure, and a useful thing to know because it says 
 g-points has stopped buying anything. That the same calculation at a single pressure throughout
 agrees to 6 × 10⁻⁶ confirms the floor is the assumption and not a bug.
 
+### Checked against real CO₂
+
+The reference above validates the *method*. Whether the approximation resembles a real gas is a
+different question, and it needs real line data:
+
+```
+pwsh scripts/fetch-hitran.ps1
+```
+
+That downloads HITRAN's CO₂ 15 µm band — 28,619 lines over 580–760 cm⁻¹, no API key required.
+The data is **not committed**: it is third-party data with its own citation requirement, and
+leaving it out keeps the suite runnable with no network at all. `HitranTests` skips rather than
+fails when it is absent (198 pass + 12 skip offline; 210 pass with the data).
+
+Transmission through the band core, 640–700 cm⁻¹, 10,329 lines above an intensity cutoff:
+
+| τ | line-by-line | grey | best lognormal | measured, 16 | measured, 32 |
+|---|---|---|---|---|---|
+| 0.3 | 0.841 | 0.741 | 0.826 | 0.832 | 0.839 |
+| 1.0 | 0.666 | 0.368 | 0.639 | 0.664 | 0.666 |
+| 3.0 | 0.434 | 0.050 | 0.420 | 0.433 | 0.433 |
+| 10 | 0.162 | 0.000 | 0.201 | 0.161 | 0.162 |
+
+Grey is catastrophic against real CO₂ — at τ = 3 it transmits 5 % where the band transmits 43 %.
+The band's own **measured** k-distribution is excellent: 32 g-points track line-by-line to 0.001.
+
+But the parametric families do not fit. The best-fitting lognormal width **drifts with optical
+depth** — 1.70 where the band is thin, 1.65 at τ = 1, 1.25 where it is thick — because a real
+band's k-distribution simply is not lognormal. No single `--k-width` is right, and the best
+compromise is roughly four times worse than the measured distribution. That is a negative result
+about this model's own knob, and it is why `ModelOptions.MeasuredKDistribution` exists: given
+line data, use the band's real distribution rather than a fitted shape.
+
+Two simplifications are stated rather than buried: intensities are used at their 296 K values,
+since scaling them properly needs total internal partition sums, and only air broadening is
+applied. Neither matters for comparing band approximations, because the reference and the
+approximation see identical line data.
+
 The suite is organised by what it constrains — `AnalyticBenchmarkTests` and
 `SolverConsistencyTests` hold the assertions above, `ExtendedPhysicsTests` and `Co2Tests`
 the optional physics, `FullModelTests` the end-to-end budgets. Equilibrium runs are the
@@ -557,6 +595,7 @@ src/ClimateColumn.Core/
   Co2Sweep.cs            concentration sweep and instantaneous forcing
   KDistribution.cs       correlated-k quadrature over a band
   LineByLine.cs          resolved-spectrum reference for checking the band approximations
+  HitranLineList.cs      reads a downloaded HITRAN line list
   Reporting.cs           console tables and CSV
 src/ClimateColumn.Cli/   command-line driver
 src/ClimateColumn.Charts/  WinForms chart viewer and PNG export
@@ -615,10 +654,14 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 - **The continuum's strength is tuned, not derived.** Its two scalings are physical, but the
   magnitude is one free parameter rather than fitted MT_CKD coefficients, and it is applied
   only inside the window rather than across the spectrum.
-- **Nothing is checked against *real* line data.** The line-by-line reference above validates
-  the band machinery against exact spectral integration, but from a synthetic line list. Whether
-  the model's absorption resembles Earth's needs HITRAN, and that comparison has not been made —
-  so the k-distribution's shape and width remain prescribed rather than fitted to a real gas.
+- **The parametric k-distribution does not fit a real band.** Measured against HITRAN's CO₂
+  15 µm band, the best lognormal width drifts from 1.70 to 1.25 across optical depth, so any
+  single `--k-width` is a compromise roughly four times worse than the band's own measured
+  distribution. Use `MeasuredKDistribution` when you have line data.
+- **Only one band of one molecule has been checked.** CO₂ at 15 µm, at 296 K, with air
+  broadening only and no temperature dependence of line strength. Water vapour — which does
+  most of the actual absorbing — has not been compared at all, and the column model still runs
+  on one broadband absorber rather than on the spectral data.
 - **The diffusivity is band-independent.** $D = 2$ is exact in the optically *thin* limit,
   which makes it the worst choice for opaque band centres. One $D$ cannot be right for bands
   spanning $\tau \ll 1$ to $\tau \gg 1$; the exact $2E_3(\tau)$ transmission would be needed.
