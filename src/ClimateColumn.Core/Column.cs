@@ -160,12 +160,14 @@ public sealed class Column
         double Foreign(Segment s) => p0 > 0 ? vapourWeight(s) * (s.MidPressure / p0) : 0.0;
 
         double dryColumn = 0.0, vapourColumn = 0.0, selfColumn = 0.0, foreignColumn = 0.0;
+        double ozoneColumn = 0.0;
         foreach (var s in Segments)
         {
             dryColumn += dryWeight(s) * s.Thickness;
             vapourColumn += vapourWeight(s) * s.Thickness;
             selfColumn += Self(s) * s.Thickness;
             foreignColumn += Foreign(s) * s.Thickness;
+            ozoneColumn += ChapmanWeight(s) * s.Thickness;
         }
 
         double ratio = Options.Co2ConcentrationRatio;
@@ -185,6 +187,8 @@ public sealed class Column
 
             double cSelf = selfColumn > 0 ? continuumSelf / (d2 * selfColumn) : 0.0;
             double cForeign = foreignColumn > 0 ? continuumForeign / (d2 * foreignColumn) : 0.0;
+            double cOzone = ozoneColumn > 0
+                ? band.OzoneOpticalDepth / (d2 * ozoneColumn) : 0.0;
 
             foreach (var s in Segments)
             {
@@ -192,7 +196,8 @@ public sealed class Column
                     cDry * dryWeight(s) +
                     cVapour * vapourWeight(s) +
                     cSelf * vapourScale * vapourScale * Self(s) +
-                    cForeign * vapourScale * Foreign(s);
+                    cForeign * vapourScale * Foreign(s) +
+                    cOzone * ChapmanWeight(s);
             }
         }
     }
@@ -304,16 +309,21 @@ public sealed class Column
     /// and integrates to e*H - the shape of absorption of an exponentially attenuated beam
     /// in an exponential absorber.
     /// </summary>
+    /// <summary>
+    /// Chapman-layer shape at a segment, exp(1 - x - e^-x) with x = (z - z0)/H: the profile of
+    /// absorption of an exponentially attenuated beam in an exponential absorber. Shared by
+    /// ozone's solar heating and its longwave band absorption, since it is the same ozone.
+    /// </summary>
+    private double ChapmanWeight(Segment s)
+    {
+        double x = (s.MidAltitude - Options.OzoneLayerAltitude) / Options.OzoneLayerWidth;
+        return Math.Exp(1.0 - x - Math.Exp(-x));
+    }
+
     public void DistributeShortwave()
     {
         double absorbed = Options.AbsorbedSolarFlux;
         double inAtmosphere = absorbed * Options.AtmosphericShortwaveFraction;
-
-        double ChapmanWeight(Segment s)
-        {
-            double x = (s.MidAltitude - Options.OzoneLayerAltitude) / Options.OzoneLayerWidth;
-            return Math.Exp(1.0 - x - Math.Exp(-x));
-        }
 
         double chapmanColumn = 0.0;
         foreach (var s in Segments) chapmanColumn += ChapmanWeight(s) * s.Thickness;

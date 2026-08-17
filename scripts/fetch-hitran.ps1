@@ -40,7 +40,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('co2-15um', 'h2o-rotational')]
+    [ValidateSet('co2-15um', 'h2o-rotational', 'h2o-bending', 'o3-9.6um', 'ch4-7.7um', 'n2o-7.8um', 'all')]
     [string] $Molecule = 'co2-15um',
 
     [string] $OutputDirectory
@@ -51,16 +51,32 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $repoRoot 'data' }
 
-# Global isotopologue ids as used by hitran.org: 7 = 12C16O2, 8 = 13C16O2, 1 = H2(16)O.
-$bands = @{
-    'co2-15um'       = @{ Isotopologues = '7,8'; From = 580; To = 760; File = 'hitran-co2-15um.csv' }
-    'h2o-rotational' = @{ Isotopologues = '1';   From = 100; To = 500; File = 'hitran-h2o-rot.csv' }
+# Global isotopologue ids as used by hitran.org, taken from HAPI's own table rather than from
+# memory: H2O 1-3, CO2 7-8, O3 16-18, N2O 21, CH4 32-33.
+#
+# Between them these cover 100-2000 cm^-1, which is where essentially all of a 200-300 K
+# atmosphere's outgoing longwave sits. The more of that range is described by real lines, the less
+# is left to the remainder band's single free number.
+$bands = [ordered]@{
+    'h2o-rotational' = @{ Isotopologues = '1,2,3';  From = 100;  To = 600;  File = 'hitran-h2o-rot.csv' }
+    'co2-15um'       = @{ Isotopologues = '7,8';    From = 580;  To = 760;  File = 'hitran-co2-15um.csv' }
+    'o3-9.6um'       = @{ Isotopologues = '16,17,18'; From = 950; To = 1200; File = 'hitran-o3-9.6um.csv' }
+    'n2o-7.8um'      = @{ Isotopologues = '21';     From = 1200; To = 1350; File = 'hitran-n2o-7.8um.csv' }
+    'ch4-7.7um'      = @{ Isotopologues = '32,33';  From = 1200; To = 1400; File = 'hitran-ch4-7.7um.csv' }
+    'h2o-bending'    = @{ Isotopologues = '1,2,3';  From = 1300; To = 2000; File = 'hitran-h2o-bend.csv' }
+}
+
+New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+
+if ($Molecule -eq 'all') {
+    foreach ($name in $bands.Keys) {
+        & $PSCommandPath -Molecule $name -OutputDirectory $OutputDirectory
+    }
+    return
 }
 
 $band = $bands[$Molecule]
 $destination = Join-Path $OutputDirectory $band.File
-
-New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
 # nu = line centre, sw = intensity at 296 K, gamma_air = air-broadened half-width,
 # n_air = its temperature exponent. The reader in Core expects exactly this order.

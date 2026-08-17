@@ -444,6 +444,14 @@ public sealed class LineByLineBand
     }
 
     /// <summary>
+    /// Builds a quadrature from an already-sorted set of absorption coefficients, relative to their
+    /// own mean. Lets a caller that has assembled a spectrum itself - a mixture of gases, say - use
+    /// the same grouping the single-gas path uses.
+    /// </summary>
+    public KDistribution QuadratureFrom(double[] sortedCoefficients, int points) =>
+        GroupIntoQuadrature(new[] { sortedCoefficients }, points).Single();
+
+    /// <summary>
     /// Collapses already-ordered spectra into equal-weight g-point groups, averaging within
     /// each. Every input shares the same grouping, which is what keeps the sub-bands aligned
     /// across layers.

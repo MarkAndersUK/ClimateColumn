@@ -253,6 +253,44 @@ comes from the spectrum rather than from where the edges fall.
 A fully derived two-gas column converges with the top of atmosphere balanced to 10⁻⁶ W m⁻², and
 doubling CO₂ warms it while leaving the water bands untouched.
 
+#### Several molecules on a shared grid
+
+Deriving each gas separately produces sets that *overlap* — N₂O's band sits inside methane's, water
+vapour is everywhere — and overlapping bands are rejected, rightly. `DeriveShared` puts every
+molecule on one wavenumber grid, partitions the range once, and records how much each gas
+contributes to each band:
+
+```
+pwsh scripts/fetch-hitran.ps1 -Molecule all      # H2O x2, CO2, O3, CH4, N2O
+```
+
+Twelve bands over 100–2000 cm⁻¹ from ~100,000 lines, in under a second:
+
+| band | dry τ | CO₂ frac | vapour | ozone | |
+|---|---|---|---|---|---|
+| 37.8–100 µm | — | — | **55.5** | — | H₂O rotational |
+| 20.2–23.4 µm | — | — | 0.74 | — | |
+| 14.1–15.8 µm | **48.3** | 1.00 | — | — | CO₂ ν₂ centre |
+| **11.2–12.6 µm** | — | — | — | — | **the atmospheric window** |
+| 9.8–11.2 µm | — | — | — | **2.05** | O₃ 9.6 µm |
+| 5.0–8.2 µm | 0.73 | 0.00 | 4.91 | — | H₂O bending + CH₄/N₂O |
+
+These bands carry **98.9 %** of a 260 K Planck function, so the remainder — the one free number
+standing in for everything unmodelled — is down to 1.1 %.
+
+Nothing told the derivation where the atmospheric window was; it is simply where none of these gases
+has lines. Nothing told it ozone sits inside that window either. Each band's `Co2Fraction` is CO₂'s
+share of its well-mixed opacity, so only the bands CO₂ dominates respond to concentration — asserted
+band by band. Ozone gets its own Chapman profile, since it peaks in the stratosphere and would be in
+entirely the wrong place on either of the other two; the tests check its absorption peaks between
+15 and 40 km.
+
+The real approximation is **gas overlap**: a band's k-distribution is measured from the *total*
+absorption of every gas in it at reference amounts, so moving one gas far from its reference degrades
+the distribution while leaving its optical depth correct. That is the classic difficulty in
+correlated-k, and it is bounded here rather than solved — re-derive if a concentration moves by more
+than a factor of a few.
+
 One clean identity is genuinely lost. Under a flat fraction the instantaneous forcing scaled
 as exactly $(1-f)$, because $f$ factored out of every source term. It no longer does. It is
 tempting to assume the suppression must then be bracketed by $(1-f)$ at the profile's
@@ -747,12 +785,14 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 - **One band per molecule, at one temperature.** CO₂ at 15 µm and H₂O's rotational band, both at
   296 K with air broadening only and no temperature dependence of line strength. The other bands
   that matter — H₂O's 6.3 µm bending band, the 9.6 µm ozone band — are untouched.
-- **The derived bands cover only what the line data covers.** Two gases over their own ranges
-  leave most of the spectrum to the remainder band, whose opacity is still a free number standing
-  in for every gas and band not modelled. Covering the longwave properly needs more molecules and
-  more bands than the handful shown.
-- **Band count and the total absorber amount are still chosen.** Everything else follows from the
-  spectrum, but how finely to band and how much gas to put in it do not.
+- **Gas overlap is approximated.** A band's k-distribution comes from the total absorption of every
+  gas in it at reference amounts, so moving one gas far from its reference degrades the distribution.
+  Re-derive rather than extrapolate.
+- **Band count and the absorber amounts are still chosen.** Everything else follows from the
+  spectrum, but how finely to band and how much of each gas to put in it do not — and the amounts
+  used in the README are illustrative, not fitted to observations.
+- **The charts still show the grey model.** `Co2Sweep`'s two configurations are the calibrated
+  single-band absorber; none of the spectral work above feeds the published figures yet.
 - **Shortwave is still a single grey channel.** All the spectral work is on the longwave side;
   solar absorption is a prescribed fraction split by air mass and a Chapman profile.
 - **The diffusivity is band-independent.** $D = 2$ is exact in the optically *thin* limit,

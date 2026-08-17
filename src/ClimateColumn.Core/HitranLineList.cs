@@ -79,6 +79,18 @@ public static class HitranLineList
     /// <summary>The H2O pure rotational band, as written by scripts/fetch-hitran.ps1.</summary>
     public const string WaterVapourRotational = "hitran-h2o-rot.csv";
 
+    /// <summary>The H2O nu2 bending band, around 6.3 um.</summary>
+    public const string WaterVapourBending = "hitran-h2o-bend.csv";
+
+    /// <summary>The ozone 9.6 um band, which sits inside the atmospheric window.</summary>
+    public const string OzoneNineSixMicron = "hitran-o3-9.6um.csv";
+
+    /// <summary>The methane 7.7 um band.</summary>
+    public const string MethaneSevenSevenMicron = "hitran-ch4-7.7um.csv";
+
+    /// <summary>The nitrous oxide 7.8 um band.</summary>
+    public const string NitrousOxideSevenEightMicron = "hitran-n2o-7.8um.csv";
+
     /// <summary>
     /// Locates a downloaded list under <c>data/</c> beside the solution. Returns null when it
     /// has not been fetched, which is what lets callers skip rather than fail.

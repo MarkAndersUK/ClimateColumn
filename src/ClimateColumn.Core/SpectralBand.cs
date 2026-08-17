@@ -66,6 +66,13 @@ public sealed class SpectralBand
     public double ContinuumOpticalDepth { get; init; }
 
     /// <summary>
+    /// Column optical depth in this band from ozone, distributed on the same Chapman layer as its
+    /// solar heating. Ozone peaks in the stratosphere, so it needs its own profile rather than
+    /// borrowing the well-mixed or vapour one.
+    /// </summary>
+    public double OzoneOpticalDepth { get; init; }
+
+    /// <summary>
     /// Line structure within the band. Null leaves it grey. This is where a distribution
     /// measured from HITRAN belongs - the whole point of banding is that CO2's and water
     /// vapour's differ, and here they can.
@@ -85,7 +92,8 @@ public sealed class SpectralBand
 
     /// <summary>True when nothing at all absorbs in this band.</summary>
     public bool IsTransparent =>
-        OpticalDepth <= 0.0 && WaterVapourOpticalDepth <= 0.0 && ContinuumOpticalDepth <= 0.0;
+        OpticalDepth <= 0.0 && WaterVapourOpticalDepth <= 0.0 &&
+        ContinuumOpticalDepth <= 0.0 && OzoneOpticalDepth <= 0.0;
 
     public override string ToString() =>
         IsRemainder
