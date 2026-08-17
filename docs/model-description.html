@@ -782,9 +782,11 @@
 
     footer { break-inside: avoid; margin-top: 8mm; padding-top: 4mm; font-size: 8.8pt; }
 
-    /* Print the artifact URL so a paper copy can be traced back to the live one. */
+    /* Print the source so a paper copy can be traced back. Deliberately the repository and not
+       the artifact URL: that artifact is private, and this document is committed to a public
+       repo, which would have published the link to it. */
     footer::after {
-      content: "Live version: claude.ai/code/artifact/0f1520a8-32b4-4487-9a68-03d87b83ca5f";
+      content: "github.com/MarkAndersUK/ClimateColumn";
       display: block;
       margin-top: 3mm;
       font-family: var(--mono);
