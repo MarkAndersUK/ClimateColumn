@@ -1176,3 +1176,15 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
   the solver.
 - The layer mass grid is built once from the standard atmosphere and held fixed as the
   temperature profile evolves.
+
+## Licence
+
+The code in this repository is MIT licensed — see [LICENSE](LICENSE).
+
+**The HITRAN line data is not.** It is third-party data with its own terms and its own citation
+requirement, it is deliberately not committed here, and the MIT licence above does not extend to
+it. `scripts/fetch-hitran.ps1` downloads it from hitran.org at your request; if you publish
+anything derived from it, cite HITRAN rather than this repository.
+
+The U.S. Standard Atmosphere 1976 coefficients in `StandardAtmosphere.cs` are published reference
+values, and the Koenigsberger relations are from the cited textbook.
