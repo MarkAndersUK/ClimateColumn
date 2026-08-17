@@ -216,6 +216,43 @@ intervals are rejected for the mirror-image reason.
 The single-absorber arrangement is now expressed as a band set too, so there is one code path,
 and it reproduces bit-identically — every prior test passed unchanged across the change.
 
+#### Deriving the bands from line data
+
+Specifying bands by hand means three guesses each: where the band sits, how opaque it is relative
+to its neighbours, and what its line structure looks like. Given a line list, all three follow
+from the data.
+
+```csharp
+var bands = BandDerivation.Combine(remainderOpticalDepth: 0.4,
+    BandDerivation.Derive(waterSpectrum,  4, opticalDepth: 4.0, AbsorberKind.WaterVapour, "H2O"),
+    BandDerivation.Derive(carbonSpectrum, 4, opticalDepth: 2.0, AbsorberKind.WellMixed,   "CO2"));
+```
+
+Boundaries come from the Planck function — each band carries an equal share of it at a reference
+temperature, so bands are narrow where the emission is concentrated (`UniformWavenumber` is
+available for comparison). Relative opacity is the mean absorption measured inside each band.
+Structure is the measured distribution of that absorption. The one free parameter is the
+Planck-weighted mean optical depth, which is right: that is concentration, not spectroscopy.
+
+Derived from HITRAN, it recovers band structure nobody told it about:
+
+| CO₂ band | τ | | H₂O band | τ |
+|---|---|---|---|---|
+| 15.9–16.7 µm | 0.90 | | 22.2–24.7 µm | 1.12 |
+| 15.2–15.9 µm | 9.77 | | 24.7–27.9 µm | 2.72 |
+| **14.6–15.2 µm** | **44.11** | | 27.9–32.7 µm | 8.16 |
+| 13.9–14.6 µm | 6.08 | | 32.7–41.1 µm | 26.78 |
+| 13.3–13.9 µm | 0.79 | | 41.1–66.7 µm | 37.94 |
+
+The most opaque CO₂ band straddles **15.0 µm** — the ν₂ centre — and is 56× more opaque than the
+wings. That contrast *is* the band saturation a grey model cannot express, and it emerged from the
+line strengths. Water vapour strengthens monotonically into the far infrared, as a rotational
+progression should. Both boundary strategies find the same peak to within 25 %, so the pattern
+comes from the spectrum rather than from where the edges fall.
+
+A fully derived two-gas column converges with the top of atmosphere balanced to 10⁻⁶ W m⁻², and
+doubling CO₂ warms it while leaving the water bands untouched.
+
 One clean identity is genuinely lost. Under a flat fraction the instantaneous forcing scaled
 as exactly $(1-f)$, because $f$ factored out of every source term. It no longer does. It is
 tempting to assume the suppression must then be bracketed by $(1-f)$ at the profile's
@@ -641,6 +678,7 @@ src/ClimateColumn.Core/
   GridConvergence.cs     refinement study with Richardson extrapolation
   Co2Sweep.cs            concentration sweep and instantaneous forcing
   SpectralBand.cs        one band: extent, absorbers, line structure
+  BandDerivation.cs      derives a band set from resolved line data
   KDistribution.cs       correlated-k quadrature over a band
   LineByLine.cs          resolved-spectrum reference for checking the band approximations
   HitranLineList.cs      reads a downloaded HITRAN line list
@@ -709,10 +747,12 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 - **One band per molecule, at one temperature.** CO₂ at 15 µm and H₂O's rotational band, both at
   296 K with air broadening only and no temperature dependence of line strength. The other bands
   that matter — H₂O's 6.3 µm bending band, the 9.6 µm ozone band — are untouched.
-- **The bands are hand-specified, not derived.** Solving band by band is now possible, but the
-  intervals and their optical depths are chosen by the caller rather than computed from line
-  data. A rigorous scheme would derive both — and would use enough bands to cover the spectrum
-  properly rather than the handful shown above.
+- **The derived bands cover only what the line data covers.** Two gases over their own ranges
+  leave most of the spectrum to the remainder band, whose opacity is still a free number standing
+  in for every gas and band not modelled. Covering the longwave properly needs more molecules and
+  more bands than the handful shown.
+- **Band count and the total absorber amount are still chosen.** Everything else follows from the
+  spectrum, but how finely to band and how much gas to put in it do not.
 - **Shortwave is still a single grey channel.** All the spectral work is on the longwave side;
   solar absorption is a prescribed fraction split by air mass and a Chapman profile.
 - **The diffusivity is band-independent.** $D = 2$ is exact in the optically *thin* limit,

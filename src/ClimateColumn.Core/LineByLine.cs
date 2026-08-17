@@ -280,6 +280,137 @@ public sealed class LineByLineBand
     }
 
     /// <summary>
+    /// One sub-band carved out of a resolved spectrum: where it sits, how strongly it absorbs
+    /// relative to the whole range, and the line structure inside it.
+    /// </summary>
+    /// <param name="FromWavenumber">Lower edge, cm^-1.</param>
+    /// <param name="ToWavenumber">Upper edge, cm^-1.</param>
+    /// <param name="RelativeStrength">
+    /// Mean absorption coefficient in this sub-band as a multiple of the whole range's mean. This
+    /// is what makes the derivation a derivation: the relative opacity of the bands comes from
+    /// the line data, not from a choice.
+    /// </param>
+    /// <param name="Structure">The sub-band's own k-distribution, relative to its own mean.</param>
+    public readonly record struct DerivedSubBand(
+        double FromWavenumber, double ToWavenumber, double RelativeStrength, KDistribution Structure);
+
+    /// <summary>How to place sub-band boundaries across a resolved spectrum.</summary>
+    public enum SubdivisionStrategy
+    {
+        /// <summary>
+        /// Each sub-band carries an equal share of the Planck function at a reference
+        /// temperature, so bands are narrow where the emission is concentrated and wide in the
+        /// tails. Balances what each band contributes to the radiation budget.
+        /// </summary>
+        EqualPlanckEnergy,
+
+        /// <summary>Equal width in wavenumber. Simple, and useful for checking the above.</summary>
+        UniformWavenumber
+    }
+
+    /// <summary>
+    /// Carves the resolved spectrum into <paramref name="count"/> sub-bands, measuring each one's
+    /// strength and line structure from the data.
+    /// </summary>
+    /// <remarks>
+    /// This is what turns hand-specified bands into derived ones. Nothing about the outcome is
+    /// chosen except how many bands to use and where to cut: each band's opacity relative to its
+    /// neighbours is the mean of the resolved absorption inside it, and its k-distribution is the
+    /// measured distribution of that absorption. What remains a free parameter is the total amount
+    /// of gas, which is a matter of concentration rather than spectroscopy.
+    /// </remarks>
+    public IReadOnlyList<DerivedSubBand> Subdivide(
+        int count, int gPoints,
+        SubdivisionStrategy strategy = SubdivisionStrategy.EqualPlanckEnergy,
+        double referenceTemperature = 260.0)
+    {
+        if (count < 1) throw new ArgumentException("count must be >= 1.");
+        if (gPoints < 1) throw new ArgumentException("gPoints must be >= 1.");
+        if (referenceTemperature <= 0) throw new ArgumentException("referenceTemperature must be positive.");
+
+        var k = AbsorptionCoefficients();
+        double[] edges = Edges(count, strategy, referenceTemperature);
+
+        var result = new List<DerivedSubBand>(count);
+        double step = _wavenumbers[1] - _wavenumbers[0];
+
+        for (int b = 0; b < count; b++)
+        {
+            int from = (int)Math.Ceiling((edges[b] - _wavenumbers[0]) / step);
+            int to = (int)Math.Ceiling((edges[b + 1] - _wavenumbers[0]) / step);
+
+            from = Math.Clamp(from, 0, k.Length);
+            to = Math.Clamp(to, from + 1, k.Length);
+
+            double mean = 0.0;
+            for (int i = from; i < to; i++) mean += k[i];
+            mean /= to - from;
+
+            // The quadrature is relative to this sub-band's own mean, so the mean itself carries
+            // the band's opacity and the distribution carries only its shape.
+            var slice = new double[to - from];
+            for (int i = from; i < to; i++) slice[i - from] = mean > 0 ? k[i] / mean : 1.0;
+            Array.Sort(slice);
+
+            result.Add(new DerivedSubBand(
+                edges[b], edges[b + 1], mean,
+                GroupIntoQuadrature(new[] { slice }, Math.Min(gPoints, slice.Length)).Single()));
+        }
+
+        return result;
+    }
+
+    /// <summary>Sub-band boundaries in cm^-1, count + 1 of them.</summary>
+    private double[] Edges(int count, SubdivisionStrategy strategy, double referenceTemperature)
+    {
+        var edges = new double[count + 1];
+        edges[0] = Start;
+        edges[count] = End;
+
+        if (strategy == SubdivisionStrategy.UniformWavenumber)
+        {
+            for (int b = 1; b < count; b++) edges[b] = Start + (End - Start) * b / count;
+            return edges;
+        }
+
+        // Equal Planck energy. The fraction of a Planck function below a wavelength is a function
+        // of the product lambda*T, and wavelength is 1/wavenumber, so the cumulative emission
+        // between two wavenumbers is a difference of two such fractions. Bisect on wavenumber to
+        // split that total evenly - the function is monotonic, so bisection is safe and exact
+        // enough for a band edge.
+        double Cumulative(double wavenumber) =>
+            Planck.FractionBelow(Wavelength(Start) * referenceTemperature) -
+            Planck.FractionBelow(Wavelength(wavenumber) * referenceTemperature);
+
+        double total = Cumulative(End);
+
+        if (total <= 0)
+        {
+            for (int b = 1; b < count; b++) edges[b] = Start + (End - Start) * b / count;
+            return edges;
+        }
+
+        for (int b = 1; b < count; b++)
+        {
+            double target = total * b / count;
+            double low = Start, high = End;
+
+            for (int iteration = 0; iteration < 80; iteration++)
+            {
+                double middle = 0.5 * (low + high);
+                if (Cumulative(middle) < target) low = middle; else high = middle;
+            }
+
+            edges[b] = 0.5 * (low + high);
+        }
+
+        return edges;
+    }
+
+    /// <summary>Wavelength in metres for a wavenumber in cm^-1.</summary>
+    private static double Wavelength(double wavenumber) => 0.01 / wavenumber;
+
+    /// <summary>
     /// A correlated-k quadrature over a stack of layers: order the spectrum once, by the
     /// reference layer, and use that same ordering at every level.
     /// </summary>
