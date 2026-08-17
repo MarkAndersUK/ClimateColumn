@@ -224,6 +224,29 @@ public sealed class ModelOptions
         MeasuredKDistribution ??
         KDistribution.Build(KDistributionShape, KDistributionWidth, KDistributionPoints);
 
+    /// <summary>
+    /// Explicit spectral bands. Empty (the default) keeps the single-absorber arrangement, with
+    /// the window - if configured - as a second band.
+    /// </summary>
+    /// <remarks>
+    /// Setting bands is what lets different gases act where they actually act, each with its own
+    /// optical depth, vertical profile and line structure. Every other absorber setting on this
+    /// class describes the single-band case and is ignored once bands are given, so a band set
+    /// is a complete description rather than a modifier.
+    ///
+    /// Bands need not cover the spectrum. Whatever they leave is carried by the remainder band
+    /// if one is present, and is otherwise transparent - the surface's emission there escapes
+    /// straight to space. Either way the Planck weights sum to one, so energy still closes.
+    /// </remarks>
+    public IReadOnlyList<SpectralBand> Bands { get; set; } = Array.Empty<SpectralBand>();
+
+    /// <summary>True when an explicit band set is in use.</summary>
+    public bool HasBands => Bands.Count > 0;
+
+    /// <summary>CO2 concentration as a multiple of the reference, for band scaling.</summary>
+    public double Co2ConcentrationRatio =>
+        Co2ReferenceConcentration > 0 ? Co2Concentration / Co2ReferenceConcentration : 1.0;
+
     /// <summary>True when a window of non-zero width has been configured.</summary>
     public bool HasWindow => WindowLongWavelength > WindowShortWavelength;
 
@@ -314,6 +337,58 @@ public sealed class ModelOptions
     /// <summary>Initialise the profile from the U.S. Standard Atmosphere (else isothermal).</summary>
     public bool InitialiseFromStandardAtmosphere { get; set; } = true;
 
+    /// <summary>
+    /// Checks a band set is usable: at most one remainder, no overlapping intervals, and no
+    /// negative absorber.
+    /// </summary>
+    /// <remarks>
+    /// Overlap is rejected rather than tolerated because the Planck weights are computed
+    /// independently per interval. Two bands covering the same wavelengths would each claim that
+    /// share of every emitter's output, so the weights would sum above one and the column would
+    /// radiate more than it holds.
+    /// </remarks>
+    private void ValidateBands()
+    {
+        if (!HasBands) return;
+
+        int remainders = 0;
+        var intervals = new List<(double From, double To, string Label)>();
+
+        foreach (var band in Bands)
+        {
+            if (band.OpticalDepth < 0 || band.WaterVapourOpticalDepth < 0 ||
+                band.ContinuumOpticalDepth < 0)
+            {
+                throw new ArgumentException($"Band '{band.Label}' has a negative optical depth.");
+            }
+            if (band.Co2Fraction is < 0 or > 1)
+                throw new ArgumentException($"Band '{band.Label}' has Co2Fraction outside [0, 1].");
+
+            if (band.IsRemainder) { remainders++; continue; }
+
+            if (band.ShortWavelength < 0)
+                throw new ArgumentException($"Band '{band.Label}' has a negative wavelength.");
+
+            intervals.Add((band.ShortWavelength, band.LongWavelength, band.Label));
+        }
+
+        if (remainders > 1)
+            throw new ArgumentException(
+                $"{remainders} bands are marked as the remainder; at most one may be.");
+
+        intervals.Sort((a, b) => a.From.CompareTo(b.From));
+        for (int i = 1; i < intervals.Count; i++)
+        {
+            if (intervals[i].From < intervals[i - 1].To)
+            {
+                throw new ArgumentException(
+                    $"Bands '{intervals[i - 1].Label}' and '{intervals[i].Label}' overlap. " +
+                    "Each band claims its own share of every emitter's Planck function, so " +
+                    "overlapping intervals would make the column radiate more than it holds.");
+            }
+        }
+    }
+
     public ModelOptions Clone() => (ModelOptions)MemberwiseClone();
 
     /// <summary>
@@ -391,6 +466,8 @@ public sealed class ModelOptions
             throw new ArgumentException("WaterVapourScaleHeight must be positive.");
         if (WaterVapourReferenceTemperature <= 0)
             throw new ArgumentException("WaterVapourReferenceTemperature must be positive.");
+
+        ValidateBands();
 
         if (SurfaceHeatCapacity <= 0) throw new ArgumentException("SurfaceHeatCapacity must be positive.");
     }

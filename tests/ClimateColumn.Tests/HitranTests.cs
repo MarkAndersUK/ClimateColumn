@@ -307,6 +307,69 @@ public class HitranTests
             $"({result.SurfaceTemperature:F2} vs {TestSupport.Default.SurfaceTemperature:F2} K)");
     }
 
+    /// <summary>
+    /// The whole arc, closed: CO2 and water vapour in their own bands, each carrying the line
+    /// structure measured from its own HITRAN spectrum, solved together in one column.
+    /// </summary>
+    /// <remarks>
+    /// This was impossible before banding. A single broadband absorber can hold one
+    /// k-distribution, and the two gases demonstrably want different ones - CO2's best-fit
+    /// lognormal width is about 1.5 against water vapour's 2.4, and their measured distributions
+    /// differ far more than that comparison suggests. Now each band carries its own.
+    /// </remarks>
+    [TestMethod]
+    public void BandedColumnCarriesBothGasesWithTheirOwnMeasuredStructures()
+    {
+        var carbon = Band(CarbonDioxide).ToKDistribution(16);
+        var water = Band(WaterVapour).ToKDistribution(16);
+
+        var options = new ModelOptions
+        {
+            SegmentCount = 40,
+            WaterVapourOpticalDepth = 1.0,
+            Bands = new[]
+            {
+                new SpectralBand
+                {
+                    Label = "H2O rotational",
+                    ShortWavelength = 20e-6,
+                    LongWavelength = 50e-6,
+                    WaterVapourOpticalDepth = 4.0,
+                    Co2Fraction = 0.0,
+                    Structure = water
+                },
+                new SpectralBand
+                {
+                    Label = "CO2 15 um",
+                    ShortWavelength = 13e-6,
+                    LongWavelength = 17e-6,
+                    OpticalDepth = 3.0,
+                    Structure = carbon
+                },
+                new SpectralBand { Label = "remainder", OpticalDepth = 0.5, Co2Fraction = 0.0 }
+            }
+        };
+
+        var result = ColumnModel.RunToEquilibrium(options);
+
+        Assert.IsTrue(result.Converged, "the two-gas banded column must reach equilibrium");
+        Assert.IsTrue(result.SurfaceTemperature is > 200 and < 350,
+            $"and stay physical ({result.SurfaceTemperature:F2} K)");
+
+        // The two bands really are carrying different distributions.
+        Assert.AreNotEqual(carbon.Multipliers[0], water.Multipliers[0],
+            "the two gases should not have produced identical structures");
+
+        // And doubling CO2 warms it, with only the CO2 band responding.
+        var doubled = options.Clone();
+        doubled.Co2Concentration = 570.0;
+        var warmer = ColumnModel.RunToEquilibrium(doubled);
+
+        Assert.IsTrue(warmer.SurfaceTemperature > result.SurfaceTemperature,
+            $"doubling CO2 must warm the banded column " +
+            $"({warmer.SurfaceTemperature:F2} vs {result.SurfaceTemperature:F2} K)");
+    }
+
     [TestMethod]
     public void MeasuredDistributionTakesPrecedenceOverTheParametricShape()
     {

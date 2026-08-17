@@ -15,14 +15,21 @@ public sealed class RadiationResult
     /// <summary>Longwave flux convergence into each segment, W m^-2 (positive = warming).</summary>
     public required double[] RadiativeHeating { get; init; }
 
-    /// <summary>Hemispheric optical thickness of each segment in the absorbing band.</summary>
+    /// <summary>
+    /// A single representative hemispheric optical thickness per segment: the bands' thicknesses
+    /// weighted by the share of that segment's emission each carries. With one absorbing band and
+    /// no window it is simply that band's thickness.
+    /// </summary>
     public required double[] OpticalThickness { get; init; }
 
-    /// <summary>
-    /// Hemispheric optical thickness of each segment inside the spectral window. All zeros
-    /// unless a water-vapour continuum has been configured.
-    /// </summary>
-    public required double[] WindowOpticalThickness { get; init; }
+    /// <summary>Hemispheric optical thickness of each segment, per band: [band][segment].</summary>
+    public required double[][] BandOpticalThickness { get; init; }
+
+    /// <summary>Names of the bands, in the same order as <see cref="BandOpticalThickness"/>.</summary>
+    public required string[] BandLabels { get; init; }
+
+    /// <summary>Total hemispheric optical depth of band <paramref name="band"/>.</summary>
+    public double TotalBandOpticalDepth(int band) => BandOpticalThickness[band].Sum();
 
     /// <summary>Emission actually used by the solver, up + down, per segment, W m^-2.</summary>
     public required double[] SegmentEmission { get; init; }
@@ -89,11 +96,104 @@ public sealed class RadiationResult
 public static class RadiationSolver
 {
     /// <summary>
-    /// One spectral band: the share of each emitter's Planck function it carries, the optical
-    /// thickness the radiation sees inside it, and how that absorption is distributed across
-    /// the band.
+    /// One spectral band as the solver sees it: where its per-segment extinction comes from,
+    /// what share of an emitter's Planck function it carries, and how absorption is distributed
+    /// across it.
     /// </summary>
-    private readonly record struct Band(double[] Share, double[] Tau, KDistribution Structure);
+    /// <remarks>
+    /// The coefficient and share are read through delegates rather than copied, so that the
+    /// single-absorber arrangement keeps working exactly as before - tests that set
+    /// <see cref="Segment.EmissionCoefficient"/> directly after building a column still drive
+    /// the solver, because the delegate reads it live.
+    /// </remarks>
+    private readonly record struct BandPlan(
+        Func<Segment, double> Coefficient,
+        Func<double, double> Share,
+        KDistribution Structure,
+        string Label);
+
+    /// <summary>
+    /// Expresses whatever the options describe - explicit bands, or the single absorber with an
+    /// optional window - as one list of band plans, so the solver has a single code path.
+    /// </summary>
+    private static BandPlan[] PlanBands(ModelOptions options)
+    {
+        if (!options.HasBands)
+        {
+            // The absorbing band is the complement of the window, which is not itself an
+            // interval, so it takes whatever the window leaves.
+            return new[]
+            {
+                new BandPlan(
+                    s => s.EmissionCoefficient,
+                    t => 1.0 - options.WindowShare(t),
+                    options.BuildKDistribution(),
+                    "absorbing"),
+                new BandPlan(
+                    s => s.WindowEmissionCoefficient,
+                    options.WindowShare,
+                    KDistribution.Grey,
+                    "window")
+            };
+        }
+
+        var bands = options.Bands;
+
+        // If no band claims the remainder, one is added that is transparent. Without it the
+        // interval bands' weights sum to less than one and the surface silently radiates less
+        // than its own sigma T^4 - energy vanishing into the part of the spectrum nobody
+        // described. Closing the spectrum here makes the weights sum to one by construction,
+        // whatever intervals the caller chose.
+        bool covered = false;
+        foreach (var band in bands)
+        {
+            if (band.IsRemainder) { covered = true; break; }
+        }
+
+        var plans = new BandPlan[bands.Count + (covered ? 0 : 1)];
+
+        if (!covered)
+        {
+            plans[^1] = new BandPlan(
+                _ => 0.0,
+                temperature =>
+                {
+                    double claimed = 0.0;
+                    foreach (var band in bands) claimed += band.PlanckShare(temperature);
+                    return Math.Clamp(1.0 - claimed, 0.0, 1.0);
+                },
+                KDistribution.Grey,
+                "uncovered");
+        }
+
+        for (int b = 0; b < bands.Count; b++)
+        {
+            var band = bands[b];
+            int index = b;
+
+            Func<double, double> share = band.IsRemainder
+                ? temperature =>
+                {
+                    // Whatever the interval bands leave. Clamped because the Planck series is
+                    // accurate but not exact, and a hair below zero here would emit negatively.
+                    double claimed = 0.0;
+                    foreach (var other in bands)
+                    {
+                        if (!other.IsRemainder) claimed += other.PlanckShare(temperature);
+                    }
+                    return Math.Clamp(1.0 - claimed, 0.0, 1.0);
+                }
+                : band.PlanckShare;
+
+            plans[b] = new BandPlan(
+                s => s.BandEmissionCoefficients[index],
+                share,
+                band.Structure ?? KDistribution.Grey,
+                band.Label);
+        }
+
+        return plans;
+    }
 
     public static RadiationResult Solve(Column column)
     {
@@ -110,25 +210,27 @@ public static class RadiationSolver
         // reduces to the transparent case exactly when the continuum is zero - a band with
         // tau = 0 has unit transmittance, so it neither absorbs nor emits and the surface's
         // window emission passes straight through.
-        // The k-distribution applies to the absorbing band only. The window's continuum stays
-        // grey deliberately: smoothness between the lines is what makes it a continuum, so
-        // giving it line structure would misrepresent it.
-        var absorbing = new Band(new double[n], new double[n], options.BuildKDistribution());
-        var window = new Band(new double[n], new double[n], KDistribution.Grey);
+        var bands = PlanBands(options);
 
-        for (int i = 0; i < n; i++)
+        // Per-band share of each emitter's Planck function, and the optical thickness the
+        // radiation sees. Both are evaluated per segment because the share follows temperature.
+        var share = new double[bands.Length][];
+        var tau = new double[bands.Length][];
+        var surfaceShare = new double[bands.Length];
+
+        for (int b = 0; b < bands.Length; b++)
         {
-            double share = options.WindowShare(segments[i].Temperature);
-            window.Share[i] = share;
-            absorbing.Share[i] = 1.0 - share;
+            share[b] = new double[n];
+            tau[b] = new double[n];
 
-            absorbing.Tau[i] = segments[i].OpticalThickness(d);
-            window.Tau[i] = segments[i].WindowOpticalThickness(d);
+            for (int i = 0; i < n; i++)
+            {
+                share[b][i] = bands[b].Share(segments[i].Temperature);
+                tau[b][i] = d * bands[b].Coefficient(segments[i]) * segments[i].Thickness;
+            }
+
+            surfaceShare[b] = bands[b].Share(column.SurfaceTemperature);
         }
-
-        double surfaceWindowShare = options.WindowShare(column.SurfaceTemperature);
-        var surfaceShare = new[] { 1.0 - surfaceWindowShare, surfaceWindowShare };
-        var bands = new[] { absorbing, window };
 
         var up = new double[n + 1];
         var down = new double[n + 1];
@@ -142,7 +244,9 @@ public static class RadiationSolver
 
         for (int b = 0; b < bands.Length; b++)
         {
-            var (share, tau, structure) = bands[b];
+            var structure = bands[b].Structure;
+            var bandShare = share[b];
+            var bandTau = tau[b];
 
             // Each g-point is a pseudo-monochromatic sub-band: the same recurrence, with the
             // optical depth scaled by that sub-band's absorption coefficient, and its result
@@ -157,7 +261,7 @@ public static class RadiationSolver
                 var absorptivity = new double[n];
                 for (int i = 0; i < n; i++)
                 {
-                    transmittance[i] = Math.Exp(-multiplier * tau[i]);
+                    transmittance[i] = Math.Exp(-multiplier * bandTau[i]);
                     absorptivity[i] = 1.0 - transmittance[i];
                 }
 
@@ -169,7 +273,7 @@ public static class RadiationSolver
                 for (int i = n - 1; i >= 0; i--)
                 {
                     bandDown[i] = bandDown[i + 1] * transmittance[i] +
-                                  absorptivity[i] * weight * share[i] * blackbody[i];
+                                  absorptivity[i] * weight * bandShare[i] * blackbody[i];
                 }
 
                 // Surface: this sub-band's share of the Stefan-Boltzmann emission, plus
@@ -180,7 +284,7 @@ public static class RadiationSolver
                 for (int i = 0; i < n; i++)
                 {
                     bandUp[i + 1] = bandUp[i] * transmittance[i] +
-                                    absorptivity[i] * weight * share[i] * blackbody[i];
+                                    absorptivity[i] * weight * bandShare[i] * blackbody[i];
                 }
 
                 for (int i = 0; i <= n; i++)
@@ -194,7 +298,7 @@ public static class RadiationSolver
                     absorbed[i] += absorptivity[i] * (bandUp[i] + bandDown[i + 1]);
 
                     // Emission is shared equally between the two hemispheres.
-                    emission[i] += 2.0 * absorptivity[i] * weight * share[i] * blackbody[i];
+                    emission[i] += 2.0 * absorptivity[i] * weight * bandShare[i] * blackbody[i];
                 }
             }
         }
@@ -203,16 +307,20 @@ public static class RadiationSolver
         for (int i = 0; i <= n; i++) net[i] = up[i] - down[i];
 
         var koenigsberger = new double[n];
-        var totalTau = new double[n];
+        var representativeTau = new double[n];
         for (int i = 0; i < n; i++)
         {
             // Flux convergence: what enters the segment from below and above minus what leaves.
             heating[i] = net[i] - net[i + 1];
             koenigsberger[i] = segments[i].KoenigsbergerEmission;
 
-            // Reported per-segment thickness is the absorbing band's, which is what the
-            // Koenigsberger correspondence is about; read the window's back from the column.
-            totalTau[i] = absorbing.Tau[i];
+            // A single representative optical thickness for reporting and for the time-step
+            // limiter: the bands' thicknesses weighted by the share of the segment's own
+            // emission each carries. With one absorbing band and no window that is exactly the
+            // band's own thickness, so the single-absorber case is unchanged.
+            double weighted = 0.0;
+            for (int b = 0; b < bands.Length; b++) weighted += share[b][i] * tau[b][i];
+            representativeTau[i] = weighted;
         }
 
         return new RadiationResult
@@ -221,11 +329,12 @@ public static class RadiationSolver
             DownwardFlux = down,
             NetUpwardFlux = net,
             RadiativeHeating = heating,
-            OpticalThickness = totalTau,
+            OpticalThickness = representativeTau,
             SegmentEmission = emission,
             KoenigsbergerEmission = koenigsberger,
             SegmentAbsorption = absorbed,
-            WindowOpticalThickness = window.Tau
+            BandOpticalThickness = tau,
+            BandLabels = bands.Select(b => b.Label).ToArray()
         };
     }
 

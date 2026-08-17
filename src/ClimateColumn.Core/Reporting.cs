@@ -105,7 +105,22 @@ public static class Reporting
                 sb.AppendLine("    ... continuum          :       none  (the window never closes)");
             }
         }
-        if (o.KDistributionShape != KDistributionShape.Grey && o.KDistributionWidth > 0)
+        if (o.HasBands)
+        {
+            sb.AppendLine($"  spectral bands            : {o.Bands.Count}");
+            for (int b = 0; b < o.Bands.Count; b++)
+            {
+                var band = o.Bands[b];
+                string extent = band.IsRemainder
+                    ? "remainder      "
+                    : $"{band.ShortWavelength * 1e6,5:F1}-{band.LongWavelength * 1e6,-5:F1} um";
+
+                sb.AppendLine($"    {band.Label,-18} {extent}  tau {result.Column.TotalBandOpticalDepth(b),7:F4}" +
+                              (band.Structure is null ? "  grey" : $"  {band.Structure.Points} g-points"));
+            }
+        }
+
+        if (!o.HasBands && o.KDistributionShape != KDistributionShape.Grey && o.KDistributionWidth > 0)
         {
             var k = o.BuildKDistribution();
             sb.AppendLine($"  band structure            : {o.KDistributionShape}, width {o.KDistributionWidth:F2}, " +

@@ -180,6 +180,42 @@ smoothness between the lines is what makes it a continuum.
 Admitting line structure lets more longwave out at fixed temperature and cools the equilibrium
 surface: the same gas does less greenhouse work once its structure is honest.
 
+### Solving band by band
+
+Everything above describes one absorber standing in for the whole longwave spectrum, with the
+window as a second band. That cannot represent two gases at once — CO₂'s 15 µm band and water
+vapour's rotational band differ in strength, in where they sit vertically, and in line structure
+by two orders of magnitude. `ModelOptions.Bands` makes each expressible:
+
+```csharp
+Bands = new[]
+{
+    new SpectralBand { Label = "H2O rotational", ShortWavelength = 20e-6, LongWavelength = 50e-6,
+                       WaterVapourOpticalDepth = 4.0, Co2Fraction = 0.0, Structure = waterK },
+    new SpectralBand { Label = "CO2 15 um", ShortWavelength = 13e-6, LongWavelength = 17e-6,
+                       OpticalDepth = 3.0, Structure = carbonK },
+    new SpectralBand { Label = "window", ShortWavelength = 8e-6, LongWavelength = 13e-6,
+                       ContinuumOpticalDepth = 0.4 },
+    new SpectralBand { Label = "remainder", OpticalDepth = 0.6, Co2Fraction = 0.0 }
+}
+```
+
+Each band carries its own optical depth, its own mix of well-mixed gas, water vapour and
+continuum — each keeping its own vertical profile — and its own k-distribution, which is where a
+distribution measured from HITRAN belongs. Only bands with a non-zero `Co2Fraction` respond to
+`--co2-ppm`, so doubling CO₂ moves the CO₂ band and leaves water vapour alone.
+
+A band's share of an emitter's radiation is the fraction of that emitter's Planck function inside
+its interval, so it follows temperature. **One** band may instead be the *remainder*, carrying
+whatever the intervals leave — needed because "everything except the window" is not itself an
+interval. If no band claims the remainder, the solver adds a transparent one: without it the
+weights sum to less than one and the surface silently radiates less than its own $\sigma T^4$,
+with the difference vanishing into the part of the spectrum nobody described. Overlapping
+intervals are rejected for the mirror-image reason.
+
+The single-absorber arrangement is now expressed as a band set too, so there is one code path,
+and it reproduces bit-identically — every prior test passed unchanged across the change.
+
 One clean identity is genuinely lost. Under a flat fraction the instantaneous forcing scaled
 as exactly $(1-f)$, because $f$ factored out of every source term. It no longer does. It is
 tempting to assume the suppression must then be bracketed by $(1-f)$ at the profile's
@@ -604,6 +640,7 @@ src/ClimateColumn.Core/
   ColumnModel.cs         adaptive explicit march to equilibrium
   GridConvergence.cs     refinement study with Richardson extrapolation
   Co2Sweep.cs            concentration sweep and instantaneous forcing
+  SpectralBand.cs        one band: extent, absorbers, line structure
   KDistribution.cs       correlated-k quadrature over a band
   LineByLine.cs          resolved-spectrum reference for checking the band approximations
   HitranLineList.cs      reads a downloaded HITRAN line list
@@ -672,10 +709,12 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 - **One band per molecule, at one temperature.** CO₂ at 15 µm and H₂O's rotational band, both at
   296 K with air broadening only and no temperature dependence of line strength. The other bands
   that matter — H₂O's 6.3 µm bending band, the 9.6 µm ozone band — are untouched.
-- **The column model still runs on one broadband absorber.** The spectral data informs the
-  k-distribution it uses, but the model does not solve band by band, so the CO₂ and H₂O
-  distributions cannot both be in play at once. That is the next structural step, not a
-  parameter change.
+- **The bands are hand-specified, not derived.** Solving band by band is now possible, but the
+  intervals and their optical depths are chosen by the caller rather than computed from line
+  data. A rigorous scheme would derive both — and would use enough bands to cover the spectrum
+  properly rather than the handful shown above.
+- **Shortwave is still a single grey channel.** All the spectral work is on the longwave side;
+  solar absorption is a prescribed fraction split by air mass and a Chapman profile.
 - **The diffusivity is band-independent.** $D = 2$ is exact in the optically *thin* limit,
   which makes it the worst choice for opaque band centres. One $D$ cannot be right for bands
   spanning $\tau \ll 1$ to $\tau \gg 1$; the exact $2E_3(\tau)$ transmission would be needed.

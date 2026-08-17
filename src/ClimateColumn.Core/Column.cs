@@ -118,6 +118,105 @@ public sealed class Column
         }
 
         DistributeWindowContinuum(WaterVapourWeight);
+        DistributeBands(DryWeight, WaterVapourWeight);
+    }
+
+    /// <summary>
+    /// Assigns each explicit band's extinction coefficient to every segment.
+    /// </summary>
+    /// <remarks>
+    /// Each band's three absorber components keep their own vertical profile: the well-mixed
+    /// part follows air density with any pressure broadening, water vapour follows its own scale
+    /// height and the Clausius-Clapeyron scaling, and the continuum follows the vapour squared
+    /// for its self part and vapour times pressure for its foreign part. That is the whole point
+    /// of banding - a single coefficient per segment cannot represent gases that sit in
+    /// different places.
+    /// </remarks>
+    private void DistributeBands(Func<Segment, double> dryWeight, Func<Segment, double> vapourWeight)
+    {
+        if (!Options.HasBands)
+        {
+            foreach (var s in Segments) s.BandEmissionCoefficients = Array.Empty<double>();
+            return;
+        }
+
+        int bandCount = Options.Bands.Count;
+        foreach (var s in Segments)
+        {
+            if (s.BandEmissionCoefficients.Length != bandCount)
+                s.BandEmissionCoefficients = new double[bandCount];
+            else
+                Array.Clear(s.BandEmissionCoefficients);
+        }
+
+        double d2 = PhysicalConstants.KoenigsbergerDiffusivity;
+        double p0 = Segments.Length > 0 ? Segments[0].BottomPressure : 0.0;
+
+        double vapourScale = Options.WaterVapourOpticalDepth > 0
+            ? CurrentWaterVapourOpticalDepth() / Options.WaterVapourOpticalDepth
+            : ClausiusClapeyronScale();
+
+        double Self(Segment s) => vapourWeight(s) * vapourWeight(s);
+        double Foreign(Segment s) => p0 > 0 ? vapourWeight(s) * (s.MidPressure / p0) : 0.0;
+
+        double dryColumn = 0.0, vapourColumn = 0.0, selfColumn = 0.0, foreignColumn = 0.0;
+        foreach (var s in Segments)
+        {
+            dryColumn += dryWeight(s) * s.Thickness;
+            vapourColumn += vapourWeight(s) * s.Thickness;
+            selfColumn += Self(s) * s.Thickness;
+            foreignColumn += Foreign(s) * s.Thickness;
+        }
+
+        double ratio = Options.Co2ConcentrationRatio;
+        double foreignShare = Options.ContinuumForeignFraction;
+
+        for (int b = 0; b < bandCount; b++)
+        {
+            var band = Options.Bands[b];
+
+            double cDry = dryColumn > 0
+                ? band.EffectiveOpticalDepth(ratio) / (d2 * dryColumn) : 0.0;
+            double cVapour = vapourColumn > 0
+                ? band.WaterVapourOpticalDepth * vapourScale / (d2 * vapourColumn) : 0.0;
+
+            double continuumForeign = band.ContinuumOpticalDepth * foreignShare;
+            double continuumSelf = band.ContinuumOpticalDepth - continuumForeign;
+
+            double cSelf = selfColumn > 0 ? continuumSelf / (d2 * selfColumn) : 0.0;
+            double cForeign = foreignColumn > 0 ? continuumForeign / (d2 * foreignColumn) : 0.0;
+
+            foreach (var s in Segments)
+            {
+                s.BandEmissionCoefficients[b] =
+                    cDry * dryWeight(s) +
+                    cVapour * vapourWeight(s) +
+                    cSelf * vapourScale * vapourScale * Self(s) +
+                    cForeign * vapourScale * Foreign(s);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The Clausius-Clapeyron amplification of the vapour relative to its reference temperature.
+    /// Used by banded runs, where the vapour loading lives on the bands rather than on
+    /// <see cref="ModelOptions.WaterVapourOpticalDepth"/>.
+    /// </summary>
+    private double ClausiusClapeyronScale()
+    {
+        double air = ConvectionSolver.NearSurfaceAirTemperature(this);
+        if (air <= 0) return 1.0;
+
+        return Math.Exp(PhysicalConstants.ClausiusClapeyronScale *
+            (1.0 / Options.WaterVapourReferenceTemperature - 1.0 / air));
+    }
+
+    /// <summary>Total hemispheric optical depth of band <paramref name="band"/>.</summary>
+    public double TotalBandOpticalDepth(int band)
+    {
+        double sum = 0.0;
+        foreach (var s in Segments) sum += s.BandOpticalThickness(band, Options.Diffusivity);
+        return sum;
     }
 
     /// <summary>

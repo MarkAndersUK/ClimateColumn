@@ -66,6 +66,21 @@ public sealed class Segment
     public double WindowOpticalThickness(double diffusivity) =>
         diffusivity * WindowEmissionCoefficient * Thickness;
 
+    /// <summary>
+    /// Volumetric extinction coefficient in each explicit spectral band, m^-1. Empty unless
+    /// <see cref="ModelOptions.Bands"/> is in use.
+    /// </summary>
+    /// <remarks>
+    /// Kept per band rather than as one number because the bands' absorbers have genuinely
+    /// different vertical profiles: a well-mixed gas follows air density, water vapour falls off
+    /// with its own scale height, and the continuum falls off faster still.
+    /// </remarks>
+    public double[] BandEmissionCoefficients { get; set; } = Array.Empty<double>();
+
+    /// <summary>Hemispheric optical thickness in band <paramref name="band"/>.</summary>
+    public double BandOpticalThickness(int band, double diffusivity) =>
+        diffusivity * BandEmissionCoefficients[band] * Thickness;
+
     /// <summary>Blackbody emissive power sigma T^4 (Stefan-Boltzmann), W m^-2.</summary>
     public double BlackbodyEmissivePower =>
         PhysicalConstants.StefanBoltzmann * Math.Pow(Temperature, 4);

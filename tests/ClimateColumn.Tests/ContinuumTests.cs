@@ -43,10 +43,12 @@ public class ContinuumTests
         Assert.AreEqual(0.0, column.TotalWindowOpticalDepth(), 0.0,
             "no continuum means no window optical depth at all");
 
-        foreach (double tau in rad.WindowOpticalThickness)
+        // Band 1 is the window in the single-absorber arrangement.
+        foreach (double tau in rad.BandOpticalThickness[1])
         {
             Assert.AreEqual(0.0, tau, 0.0, "every segment's window thickness must be exactly zero");
         }
+        Assert.AreEqual("window", rad.BandLabels[1], "band 1 should be the window");
 
         // The surface's whole window emission must reach space untouched.
         var options = column.Options;
