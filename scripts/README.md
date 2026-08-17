@@ -77,3 +77,35 @@ and 16.4 MB to 15 and 29.8 MB.
 
 Both `dotnet test` and `dotnet run` work against the project, since the runner makes the
 test assembly directly executable.
+
+---
+
+## `readme-to-html.js` and `build-readme-page.js`
+
+Render this repository's README as a self-contained HTML page, for publishing somewhere that
+does not render GitHub-flavoured Markdown or its maths.
+
+```bash
+node scripts/readme-to-html.js README.md /tmp/body.json
+node scripts/build-readme-page.js /tmp/body.json /tmp/readme.html
+```
+
+These need Node — nothing else in the project does, and neither the build nor the test suite
+depends on them. They exist because the README carries 208 inline LaTeX expressions and 17
+display equations, and most viewers outside GitHub will show those as raw `$...$`.
+
+**The maths is converted, not rendered by a library.** Superscripts and subscripts become
+`<sup>`/`<sub>` rather than Unicode, because only a handful of characters have Unicode
+superscript forms and everything else would silently degrade. A page that embeds KaTeX would
+be an order of magnitude larger than the document, and a page that links to a CDN would break
+under a strict content-security policy.
+
+The first script reports any LaTeX command it does not recognise on stderr and exits non-zero,
+rather than passing it through as literal text. That is the check worth keeping: three
+conversion bugs were caught by it during development, and the two that were not — a subscript
+losing its grouping, and fractions being destroyed by an over-eager brace strip — were found
+only by reading all 17 equations one at a time afterwards. If either script is changed, do
+that again.
+
+Neither is a general Markdown or LaTeX implementation. Both handle exactly what this one
+document contains.
