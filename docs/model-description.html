@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClimateColumn — model description</title>
+<style>
+  /* Minimal reset, matching what the artifact host supplies. */
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; }
+  img, svg { max-width: 100%; }
+</style>
+<style>
+  /* ---- Light palette on bare :root. Neutrals biased cool, toward the slate accent,
+         so they read as chosen rather than inherited. Accent is an ochre taken from the
+         thermal-infrared end of the spectrum this model spends its time in. ---- */
+  :root {
+    --paper:      #fcfcfd;
+    --raised:     #f4f5f8;
+    --sunk:       #eef0f4;
+    --ink:        #14171e;
+    --ink-2:      #464e5d;
+    --ink-3:      #7c8493;
+    --rule:       #dfe3e9;
+    --rule-soft:  #eaedf2;
+    --warm:       #a55f13;   /* longwave / thermal IR */
+    --warm-soft:  #f4e6d4;
+    --cold:       #2b6a8c;   /* upper atmosphere / shortwave */
+    --cold-soft:  #dfeaf1;
+    --shadow:     rgba(20, 23, 30, .07);
+
+    --serif: "Sitka Text", Georgia, "Bitstream Charter", Charter, serif;
+    --sans:  ui-sans-serif, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif;
+    --mono:  ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #11141a;
+      --raised:     #181c24;
+      --sunk:       #1e222b;
+      --ink:        #e7eaf0;
+      --ink-2:      #a8b1c0;
+      --ink-3:      #737c8c;
+      --rule:       #2a2f3a;
+      --rule-soft:  #21262f;
+      --warm:       #d9973f;
+      --warm-soft:  #332615;
+      --cold:       #67aacd;
+      --cold-soft:  #16242d;
+      --shadow:     rgba(0, 0, 0, .35);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #11141a;
+    --raised:     #181c24;
+    --sunk:       #1e222b;
+    --ink:        #e7eaf0;
+    --ink-2:      #a8b1c0;
+    --ink-3:      #737c8c;
+    --rule:       #2a2f3a;
+    --rule-soft:  #21262f;
+    --warm:       #d9973f;
+    --warm-soft:  #332615;
+    --cold:       #67aacd;
+    --cold-soft:  #16242d;
+    --shadow:     rgba(0, 0, 0, .35);
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16.5px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 47rem;
+    margin: 0 auto;
+    padding: 4rem 1.5rem 6rem;
+  }
+
+  /* ---- Masthead ---- */
+  .mast { border-bottom: 1px solid var(--rule); padding-bottom: 2rem; margin-bottom: 3rem; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    display: block;
+    margin-bottom: 1.1rem;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(2.1rem, 5.4vw, 3rem);
+    line-height: 1.08;
+    font-weight: 600;
+    letter-spacing: -.015em;
+    text-wrap: balance;
+    margin: 0 0 1.1rem;
+  }
+  .standfirst {
+    font-family: var(--serif);
+    font-size: 1.2rem;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 34rem;
+    margin: 0;
+  }
+
+  /* ---- The spine: sections hang off a quiet vertical rail, echoing the column the
+         model actually is. Not numbered — these are not a sequence. ---- */
+  section { position: relative; padding-left: 1.75rem; margin-bottom: 3.25rem; }
+  section::before {
+    content: "";
+    position: absolute;
+    left: 0; top: .55rem; bottom: .1rem;
+    width: 2px;
+    background: var(--rule-soft);
+    border-radius: 2px;
+  }
+  section.key::before { background: linear-gradient(var(--warm), var(--warm-soft)); }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    text-wrap: balance;
+    margin: 0 0 .85rem;
+  }
+  h3 {
+    font-family: var(--sans);
+    font-size: .82rem;
+    font-weight: 650;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 2rem 0 .6rem;
+  }
+  p { margin: 0 0 1.05rem; }
+  p:last-child { margin-bottom: 0; }
+  strong { font-weight: 650; color: var(--ink); }
+  em { font-style: italic; }
+  a { color: var(--cold); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+  code, .num {
+    font-family: var(--mono);
+    font-size: .87em;
+    font-variant-numeric: tabular-nums;
+  }
+  code { background: var(--sunk); padding: .1em .35em; border-radius: 3px; }
+
+  /* ---- Result strip: the model's headline numbers ---- */
+  .results {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 7px;
+    overflow: hidden;
+    margin: 1.75rem 0;
+  }
+  .result { background: var(--raised); padding: 1rem 1.1rem; }
+  .result dt {
+    font-family: var(--sans);
+    font-size: .7rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: .4rem;
+  }
+  .result dd {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 1.28rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+    color: var(--ink);
+  }
+  .result dd .unit { font-size: .78rem; color: var(--ink-3); margin-left: .15em; }
+
+  /* ---- Equations ---- */
+  .eq {
+    background: var(--sunk);
+    border-left: 2px solid var(--warm);
+    border-radius: 0 5px 5px 0;
+    padding: 1rem 1.15rem;
+    margin: 1.35rem 0;
+    font-family: var(--mono);
+    font-size: .93rem;
+    line-height: 1.85;
+    overflow-x: auto;
+  }
+  .eq .gloss {
+    display: block;
+    font-family: var(--sans);
+    font-size: .82rem;
+    color: var(--ink-3);
+    margin-top: .55rem;
+    line-height: 1.5;
+  }
+
+  /* ---- Figures ---- */
+  figure { margin: 1.9rem 0; }
+  .figbox {
+    border: 1px solid var(--rule);
+    border-radius: 7px;
+    background: var(--raised);
+    padding: 1.2rem 1rem .8rem;
+    overflow-x: auto;
+  }
+  figure svg { display: block; width: 100%; height: auto; min-width: 25rem; }
+  /* SVG text: presentation attributes do not reliably resolve var(), so the faces are
+     applied as classes instead. */
+  .svg-mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .svg-sans { font-family: ui-sans-serif, "Segoe UI", Roboto, sans-serif; }
+  figcaption {
+    font-size: .84rem;
+    line-height: 1.55;
+    color: var(--ink-3);
+    margin-top: .7rem;
+  }
+  figcaption b { color: var(--ink-2); font-weight: 650; }
+
+  /* ---- Tables ---- */
+  .tablewrap { overflow-x: auto; margin: 1.6rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .89rem; min-width: 22rem; }
+  caption {
+    caption-side: bottom;
+    text-align: left;
+    font-size: .82rem;
+    color: var(--ink-3);
+    padding-top: .7rem;
+    line-height: 1.5;
+  }
+  th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--rule-soft); }
+  thead th {
+    font-size: .7rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 650;
+    border-bottom: 1px solid var(--rule);
+  }
+  td.n, th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  /* ---- Lists ---- */
+  ul.plain { list-style: none; padding: 0; margin: 1.1rem 0; }
+  ul.plain > li {
+    position: relative;
+    padding-left: 1.1rem;
+    margin-bottom: .7rem;
+  }
+  ul.plain > li::before {
+    content: "";
+    position: absolute;
+    left: 0; top: .68em;
+    width: .34rem; height: .34rem;
+    border-radius: 50%;
+    background: var(--warm);
+    opacity: .55;
+  }
+  ul.plain > li:last-child { margin-bottom: 0; }
+
+  /* ---- Aside for the honest caveats ---- */
+  .caveat {
+    background: var(--cold-soft);
+    border-radius: 7px;
+    padding: 1.1rem 1.25rem;
+    margin: 1.6rem 0;
+    font-size: .95rem;
+  }
+  .caveat .label {
+    display: block;
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: var(--cold);
+    margin-bottom: .5rem;
+  }
+  .caveat p { margin-bottom: .7rem; }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    font-size: .85rem;
+    color: var(--ink-3);
+  }
+
+  @media (max-width: 34rem) {
+    .page { padding: 2.5rem 1.1rem 4rem; }
+    section { padding-left: 1.15rem; }
+    figure svg { min-width: 21rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="mast">
+    <span class="eyebrow">Model reference</span>
+    <h1>A one-dimensional radiative&#8209;convective atmospheric column</h1>
+    <p class="standfirst">13,507 lines of C# that march a 50&nbsp;km column of air to
+      radiative–convective equilibrium, with longwave opacity built from real HITRAN line
+      data rather than a tuned grey constant.</p>
+  </header>
+
+  <section class="key">
+    <h2>What it computes</h2>
+    <p>Given a solar input, a planetary albedo and an absorber loading, it solves for the
+      temperature at every level of an atmospheric column and at the surface beneath it —
+      the state in which the column radiates to space exactly what it absorbs, and no level
+      is left with a net heating tendency.</p>
+
+    <dl class="results">
+      <div class="result">
+        <dt>Surface</dt>
+        <dd>286.797<span class="unit">K</span></dd>
+      </div>
+      <div class="result">
+        <dt>Outgoing longwave</dt>
+        <dd>238.175<span class="unit">W/m²</span></dd>
+      </div>
+      <div class="result">
+        <dt>Convecting to</dt>
+        <dd>3.44<span class="unit">km</span></dd>
+      </div>
+      <div class="result">
+        <dt>Greenhouse effect</dt>
+        <dd>+32.2<span class="unit">K</span></dd>
+      </div>
+    </dl>
+
+    <p>Those are the default configuration&rsquo;s numbers: 1361&nbsp;W/m² solar constant,
+      albedo 0.30, surface emissivity 0.98, absorber optical depth 1.8. The emission
+      temperature is 254.578&nbsp;K, so the greenhouse effect is the 32.2&nbsp;K gap between
+      that and the ground.</p>
+  </section>
+
+  <section>
+    <h2>Vertical structure</h2>
+    <p>Eighty segments of 625&nbsp;m each, from the surface to 50&nbsp;km. Pressure and the
+      initial temperature profile come from the U.S. Standard Atmosphere 1976; each segment&rsquo;s
+      air mass is its pressure drop divided by gravity, which fixes its heat capacity and its
+      share of the absorber.</p>
+
+    <figure>
+      <div class="figbox">
+        <svg viewBox="0 0 560 250" role="img" aria-label="Diagram of the column: 80 segments from the surface to 50 km, with upward and downward longwave fluxes at each interface, a convecting layer in the lowest 3.44 km, and the surface energy budget beneath.">
+          <!-- column body -->
+          <rect x="150" y="18" width="150" height="196" fill="var(--sunk)" stroke="var(--rule)"/>
+          <!-- convecting layer -->
+          <rect x="150" y="200" width="150" height="14" fill="var(--warm-soft)" stroke="var(--warm)" stroke-opacity=".45"/>
+          <!-- segment rules -->
+          <g stroke="var(--rule)" stroke-width="1" stroke-opacity=".8">
+            <line x1="150" y1="46" x2="300" y2="46"/>
+            <line x1="150" y1="74" x2="300" y2="74"/>
+            <line x1="150" y1="102" x2="300" y2="102"/>
+            <line x1="150" y1="130" x2="300" y2="130"/>
+            <line x1="150" y1="158" x2="300" y2="158"/>
+            <line x1="150" y1="186" x2="300" y2="186"/>
+          </g>
+          <!-- surface -->
+          <rect x="150" y="214" width="150" height="10" fill="var(--ink-2)"/>
+
+          <!-- flux arrows: up (warm), down (warm dashed) -->
+          <defs>
+            <marker id="up" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M4,0 L8,8 L0,8 Z" fill="var(--warm)"/>
+            </marker>
+            <marker id="dn" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M4,8 L8,0 L0,0 Z" fill="var(--warm)"/>
+            </marker>
+            <marker id="sun" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M4,8 L8,0 L0,0 Z" fill="var(--cold)"/>
+            </marker>
+          </defs>
+          <g stroke="var(--warm)" stroke-width="1.6" fill="none">
+            <line x1="196" y1="212" x2="196" y2="24" marker-end="url(#up)"/>
+            <line x1="254" y1="24" x2="254" y2="212" marker-end="url(#dn)" stroke-dasharray="5 4"/>
+          </g>
+          <!-- solar -->
+          <line x1="120" y1="24" x2="120" y2="212" stroke="var(--cold)" stroke-width="1.6" marker-end="url(#sun)" fill="none"/>
+
+          <!-- labels -->
+          <g class="svg-mono" font-size="10" fill="var(--ink-3)">
+            <text x="310" y="24">50 km — top of column</text>
+            <text x="310" y="207">3.44 km — convective top</text>
+            <text x="310" y="228">surface</text>
+            <text x="94" y="16" text-anchor="middle" fill="var(--cold)">solar</text>
+            <text x="196" y="14" text-anchor="middle" fill="var(--warm)">F↑</text>
+            <text x="256" y="14" text-anchor="middle" fill="var(--warm)">F↓</text>
+            <text x="140" y="120" text-anchor="end">80 × 625 m</text>
+          </g>
+          <g class="svg-sans" font-size="10.5" fill="var(--ink-2)">
+            <text x="310" y="120">longwave: two-stream</text>
+            <text x="310" y="136">Schwarzschild recurrence,</text>
+            <text x="310" y="152">exact per segment</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption><b>The column.</b> Longwave fluxes live on the 81 interfaces; temperature,
+        density and absorber live on the 80 segments. Solar absorption is deposited directly.
+        The lowest 3.44&nbsp;km is held on the critical lapse rate by convective adjustment.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Longwave transfer</h2>
+    <p>Emission follows the Koenigsberger volumetric law — a slab of thickness d<em>z</em>
+      emits <span class="num">4ε&prime;σT⁴</span>d<em>z</em> per unit horizontal area, split
+      equally between the two hemispheres. Kirchhoff&rsquo;s law then sets the hemispheric
+      absorptivity equal to the emissivity, which pins the extinction coefficient in flux
+      space at <span class="num">Dε&prime;</span>.</p>
+
+    <div class="eq">
+      dF<sup>±</sup>/d<em>z</em> = ∓ D ε&prime; ( F<sup>±</sup> − σT⁴ )
+      <span class="gloss">Integrated across a constant-temperature segment this gives an
+        exponential recurrence that is exact at any optical thickness — subdividing an
+        isothermal slab leaves its emission unchanged.</span>
+    </div>
+
+    <p>The diffusivity factor is <strong>D&nbsp;=&nbsp;2</strong>, and that is a derivation
+      rather than a fit. The exact hemispheric transmission is
+      <span class="num">2E₃(τ)</span>, which expands as <span class="num">1 − 2τ</span> for
+      small τ; matching the volumetric emission law in its own optically thin limit therefore
+      forces D&nbsp;=&nbsp;2. The commonly used 1.66 is an empirical compromise for thick
+      paths, and is available for comparison runs.</p>
+  </section>
+
+  <section class="key">
+    <h2>Spectral treatment</h2>
+    <p>A grey column gets the greenhouse effect roughly right and the CO₂ response badly
+      wrong, so opacity is built from measured line data instead. Line lists for
+      <strong>six molecules</strong> — H₂O (rotational and bending), CO₂, O₃, CH₄, N₂O — are
+      fetched from HITRAN, laid on a shared wavenumber grid, and the band boundaries are then
+      <em>derived</em> from where those lines actually sit rather than chosen by hand.</p>
+
+    <p>The derivation recovers the atmospheric window and ozone&rsquo;s position inside it
+      without being told either exists. Six molecules in sixteen bands cover
+      <strong>98.9&nbsp;%</strong> of a 260&nbsp;K Planck function, leaving a 1.1&nbsp;%
+      remainder.</p>
+
+    <h3>Correlated-k</h3>
+    <p>Within each band, absorption varies by orders of magnitude between line cores and
+      wings, so a single mean coefficient is useless. The resolved spectrum is sorted into a
+      cumulative distribution and integrated with a quadrature over that distribution:</p>
+
+    <div class="eq">
+      T(u) = ∫₀¹ e<sup>−k(g)u</sup> dg ≈ Σⱼ wⱼ e<sup>−kⱼu</sup>
+      <span class="gloss">Gauss–Hermite nodes in log k, which at 16 points is about 200×
+        more accurate than equal-probability midpoints. Sixteen g-points per band are used by
+        default, with lines evaluated out to 400&nbsp;cm⁻¹ from centre — see the note on the
+        logarithm for why that cutoff is the parameter that matters.</span>
+    </div>
+
+    <p>A line-by-line calculation is kept as the reference the band approximations are judged
+      against. It is what showed that grey bands are not merely imprecise but
+      catastrophically wrong: at τ&nbsp;=&nbsp;10 a grey band transmits 5×10⁻⁵ where real
+      water vapour transmits 0.504.</p>
+  </section>
+
+  <section class="key">
+    <h2>Why the CO₂ response is logarithmic</h2>
+    <p>Doubling CO₂ adds about the same forcing whatever the starting concentration —
+      285&nbsp;→&nbsp;570&nbsp;ppm gives roughly what 570&nbsp;→&nbsp;1140 gives. This is
+      not a thermodynamic law and it is not an insulation-thickness effect. It is a property
+      of the <em>shape of the absorption spectrum</em>, and it comes out in three steps.</p>
+
+    <h3>1 · The band centre is already saturated</h3>
+    <p>At present-day concentrations the core of the 15&nbsp;µm CO₂ band is completely opaque.
+      Radiation there already escapes from high in the atmosphere, and adding CO₂ changes
+      nothing: an opaque band cannot get more opaque. So the forcing cannot come from the
+      centre.</p>
+
+    <h3>2 · It comes from the wings, and the wing shape sets the law</h3>
+    <p>What adding CO₂ does is widen the opaque interval outward into the flanks, where
+      absorption is still weak. The forcing is roughly the width of that interval times the
+      Planck difference between the surface and the level the band now emits from. So
+      <strong>the law follows directly from how absorption falls off with distance from the
+      band centre.</strong></p>
+    <p>If absorption decays <em>exponentially</em> away from the centre,
+      <span class="num">k(ν) = k₀ e<sup>−|Δν|/a</sup></span>, the band is opaque wherever
+      <span class="num">k(ν)·u &gt; 1</span>, i.e. wherever</p>
+
+    <div class="eq">
+      |Δν| &lt; a · ln(k₀u)   ⟹   W(u) = 2a · ln(k₀u)
+      <span class="gloss">The opaque width grows as the logarithm of the absorber amount, so
+        F ≈ W·ΔB gives dF/d(ln u) = constant. Each doubling widens the opaque interval by the
+        same increment — which is exactly what "logarithmic forcing" means.</span>
+    </div>
+
+    <figure>
+      <div class="figbox">
+        <svg viewBox="0 0 560 210" role="img" aria-label="Diagram showing an exponentially decaying absorption coefficient plotted logarithmically as a V shape. A horizontal threshold line marks where optical depth equals one. Successive doublings of CO2 raise the curve by equal steps, pushing the intersection outward by equal increments in wavenumber.">
+          <!-- axes -->
+          <line x1="60" y1="170" x2="530" y2="170" stroke="var(--rule)" stroke-width="1"/>
+          <line x1="60" y1="20" x2="60" y2="170" stroke="var(--rule)" stroke-width="1"/>
+
+          <!-- the tau = 1 threshold -->
+          <line x1="60" y1="118" x2="530" y2="118" stroke="var(--cold)" stroke-width="1.4" stroke-dasharray="6 4"/>
+          <text x="534" y="121" class="svg-mono" font-size="9.5" fill="var(--cold)">τ = 1</text>
+
+          <!-- three V curves: each doubling shifts k up by a constant in log space -->
+          <!-- base -->
+          <path d="M295,150 L110,32" fill="none" stroke="var(--warm)" stroke-width="1.7" opacity=".38"/>
+          <path d="M295,150 L480,32" fill="none" stroke="var(--warm)" stroke-width="1.7" opacity=".38"/>
+          <!-- x2 -->
+          <path d="M295,132 L92,32" fill="none" stroke="var(--warm)" stroke-width="1.7" opacity=".65"/>
+          <path d="M295,132 L498,32" fill="none" stroke="var(--warm)" stroke-width="1.7" opacity=".65"/>
+          <!-- x4 -->
+          <path d="M295,114 L74,32" fill="none" stroke="var(--warm)" stroke-width="1.9"/>
+          <path d="M295,114 L516,32" fill="none" stroke="var(--warm)" stroke-width="1.9"/>
+
+          <!-- equal-increment markers on the threshold -->
+          <g fill="var(--ink)" stroke="var(--paper)" stroke-width="1.5">
+            <circle cx="345" cy="118" r="3.6"/>
+            <circle cx="373" cy="118" r="3.6"/>
+            <circle cx="401" cy="118" r="3.6"/>
+          </g>
+          <g stroke="var(--ink-3)" stroke-width="1">
+            <line x1="345" y1="126" x2="345" y2="146"/>
+            <line x1="373" y1="126" x2="373" y2="146"/>
+            <line x1="401" y1="126" x2="401" y2="146"/>
+          </g>
+          <g stroke="var(--ink-2)" stroke-width="1.2">
+            <line x1="345" y1="152" x2="373" y2="152"/>
+            <line x1="373" y1="158" x2="401" y2="158"/>
+          </g>
+          <text x="359" y="149" class="svg-mono" font-size="9" fill="var(--ink-2)" text-anchor="middle">Δ</text>
+          <text x="387" y="170" class="svg-mono" font-size="9" fill="var(--ink-2)" text-anchor="middle">Δ</text>
+
+          <!-- labels -->
+          <g class="svg-mono" font-size="9.5" fill="var(--ink-3)">
+            <text x="295" y="186" text-anchor="middle">band centre ν₀</text>
+            <text x="52" y="26" text-anchor="end">log k</text>
+            <text x="524" y="186" text-anchor="end">wavenumber →</text>
+          </g>
+          <g class="svg-sans" font-size="10" fill="var(--warm)">
+            <text x="524" y="45" text-anchor="end">4× CO₂</text>
+            <text x="506" y="58" text-anchor="end" opacity=".7">2×</text>
+            <text x="488" y="71" text-anchor="end" opacity=".5">1×</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption><b>Equal steps from equal doublings.</b> With absorption decaying
+        exponentially away from the band centre, plotting log&nbsp;k gives straight flanks.
+        Each doubling of CO₂ lifts the whole curve by a fixed amount, so the crossing of the
+        τ&nbsp;=&nbsp;1 threshold moves outward by the <em>same</em> increment Δ every time.
+        The opaque width grows logarithmically, and so does the forcing.</figcaption>
+    </figure>
+
+    <h3>3 · The wing shape is a fact about CO₂, not a general rule</h3>
+    <p>This is where the explanation earns its keep, because other wing shapes give other
+      laws. A single isolated pressure-broadened line has a Lorentz far wing,
+      <span class="num">k ∝ 1/Δν²</span>; that gives an opaque width growing as
+      <span class="num">√u</span>, so an isolated line would produce a <strong>square-root
+      law, not a logarithm</strong>. Purely Gaussian flanks would give
+      <span class="num">√(ln u)</span>.</p>
+    <p>So the logarithm is not automatic. It holds because the 15&nbsp;µm band&rsquo;s
+      collective envelope — many overlapping rotational lines, their strengths set by the
+      Boltzmann distribution over rotational states — happens to decay close to exponentially
+      across the range that matters. That is an empirical property of the measured spectrum;
+      it is the subject of current literature rather than something derivable from a one-line
+      argument, and it is the reason the logarithm eventually fails at concentrations far
+      outside the fitted range.</p>
+
+    <div class="caveat">
+      <span class="label">What this model demonstrates</span>
+      <p>The claim above is checkable here, and it checks out from both directions. A grey
+        absorber has no spectral structure at all, and its forcing ratio against the accepted
+        law <em>grows</em> from 1.17 to 2.14 across 285–1000&nbsp;ppm — the wrong shape, not
+        merely the wrong size. Replace it with the sixteen HITRAN-derived bands and the response
+        straightens out: fitting <span class="num">F = A ln(C/C₀)</span> gives A between 6.84 and
+        7.10&nbsp;W&nbsp;m⁻² per ln, a <strong>3.6&nbsp;% drift</strong> across a 3.5× range.</p>
+      <p>The logarithm arrives with the spectroscopy and cannot be produced without it. What
+        remains wrong is a near-uniform scale factor of about 1.3, which is a far more tractable
+        failure than one that changes shape with concentration.</p>
+      <p><strong>The resolution had to be earned, not assumed.</strong> An earlier version of this
+        configuration used 8 bands and a 15&nbsp;cm⁻¹ wing cutoff and reported almost exactly the
+        same coefficient — but by error cancellation. Widening the cutoff <em>alone</em> took it to
+        9.35, badly wrong, because truncated wings and a coarse band split had been compensating.
+        Since the logarithm comes from the far wings, throwing them away is the one approximation
+        this figure cannot afford. The converged settings are 16 bands, 16 g-points and a
+        400&nbsp;cm⁻¹ cutoff; the published ratio moved from 1.32 to 1.33.</p>
+    </div>
+
+    <p>The chart the test suite generates compares the two forcings <em>directly in
+      W/m²</em> — the model&rsquo;s own instantaneous forcing against the reference
+      equilibrium, beside 5.35&nbsp;ln(C/C₀). At 1000&nbsp;ppm that is 8.909 against 6.716.
+      Nothing is converted, so no climate sensitivity is borrowed; an earlier version plotted
+      temperature instead, which required the model&rsquo;s own sensitivity and thereby made
+      the reference partly a restatement of the thing it was testing.</p>
+  </section>
+
+  <section>
+    <h2>Convection and the surface</h2>
+    <p>Three non-radiative terms. A bulk sensible heat flux
+      <span class="num">h_c(T_s − T_air)</span> with
+      <span class="num">h_c = 5.8 + 4.1v</span>; an optional latent flux; and a
+      critical-lapse-rate adjustment that mixes any superadiabatic block onto exactly
+      6.5&nbsp;K/km while conserving <span class="num">Σ CᵢTᵢ</span>.</p>
+    <p>The surface is deliberately excluded from the adjustment — it exchanges heat with the
+      air only through radiation and the turbulent fluxes, and mixing the surface reservoir
+      too would double-count that transfer and leave its energy budget open.</p>
+    <p>Evaporation is <strong>off by default</strong>. It is the largest non-radiative term in
+      a real surface budget (~80&nbsp;W/m² against ~20 for sensible heat), but
+      <span class="num">h_c</span> here was calibrated with the sensible flux standing in for
+      both, so switching it on is a different model rather than a repair to this one. Turned
+      on, it reproduces Earth&rsquo;s <em>partition</em> — the Bowen ratio hits 0.26 near
+      moisture availability 0.35 — but not the magnitude: the total turbulent flux tops out
+      near 41&nbsp;W/m² against Earth&rsquo;s ~100, because
+      <span class="num">h_c</span> is a building-physics film coefficient rather than a
+      global-mean bulk transfer coefficient.</p>
+  </section>
+
+  <section>
+    <h2>Geometry, optionally</h2>
+    <p>The column is plane-parallel by default. Three geometric refinements can be switched
+      on, and the interesting result is how differently they matter.</p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>Each measured against the 286.797&nbsp;K default. The two that redistribute
+          energy nearly cancel; the one that changes how much energy arrives dominates by an
+          order of magnitude.</caption>
+        <thead>
+          <tr><th>Refinement</th><th class="n">ΔT<sub>s</sub></th><th>What it adds</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Spherical shells</td><td class="n">−0.016 K</td><td>shell area and the −(2/r)F flux dilution</td></tr>
+          <tr><td>Variable gravity</td><td class="n">+0.012 K</td><td>inverse-square g, geopotential grid</td></tr>
+          <tr><td>TOA solar disc</td><td class="n">+0.309 K</td><td>limb rays that miss the planet</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Sphericity turns on one identity: writing the two-stream equation in terms of
+      <span class="num">G = (r/r₀)²F</span> removes the geometric term entirely and leaves
+      the plane-parallel equation with its source scaled by
+      <span class="num">(r/r₀)²</span> — so the exact recurrence survives and sphericity
+      enters in one line.</p>
+    <p>The solar cross-section is the one that changes the answer, and the obvious
+      implementation of it is wrong twice: the extra light is <em>limb</em> light, grazing
+      through the atmosphere and out the other side, so it never touches the surface and the
+      albedo has nothing to act through. Done properly as a slant-path integral over impact
+      parameter, 2.563 of the 5.362&nbsp;W/m² intercepted is absorbed — a third less than
+      rescaling by the area ratio would give — and it lands at 19.2&nbsp;km rather than at
+      the ground.</p>
+  </section>
+
+  <section>
+    <h2>What it is not</h2>
+    <ul class="plain">
+      <li><strong>No clouds and no scattering.</strong> Clear-sky longwave only; the
+        Schwarzschild equation solved has absorption and emission terms and nothing else.</li>
+      <li><strong>One angle.</strong> The exact hemispheric integral
+        <span class="num">2π∫I(z,μ)μ dμ</span> is collapsed onto a single diffusivity, and
+        <span class="num">2E₃(τ)</span> appears only in the tests, never in the solver.
+        D&nbsp;=&nbsp;2 is exact in the optically <em>thin</em> limit, which makes it the worst
+        choice for opaque band centres — no single value can serve bands spanning τ ≪ 1 to
+        τ ≫ 1.</li>
+      <li><strong>Line strengths are not temperature-scaled.</strong> Half-widths are —
+        HITRAN&rsquo;s <span class="num">n_air</span> is applied — but intensities are used at
+        their 296&nbsp;K values, since scaling them needs total internal partition sums. Voigt
+        profiles, line mixing and sub-Lorentzian far wings are absent.</li>
+      <li><strong>Shortwave is not radiative transfer.</strong> A prescribed fraction split by
+        air mass and a Chapman profile, with no zenith angle and no diurnal cycle.</li>
+      <li><strong>No prognostic humidity.</strong> Water vapour enters as an absorber scaled by
+        Clausius–Clapeyron at fixed relative humidity, so the convective adjustment conserves
+        dry enthalpy rather than moist static energy.</li>
+      <li><strong>One column.</strong> No horizontal transport, no ice–albedo feedback, and the
+        absorber amounts are illustrative rather than fitted to observations. Read the CO₂
+        results as spectroscopy, not as a prediction.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>How it is checked</h2>
+    <p>323 tests. The ones that carry weight are not the unit tests but the independent
+      references: closed-form analytic solutions the model must reproduce (grey radiative
+      equilibrium, the <span class="num">(N+1)<sup>1/4</sup></span> opaque-slab stack), a
+      line-by-line spectrum the band approximations are measured against, exact numerical
+      integrals for the exponential integral and the Planck fraction, and — for the spherical
+      solver — a fourth-order Runge–Kutta integration of the <em>original</em> spherical
+      equation, sharing nothing with the solver but its inputs.</p>
+    <p>Several are mutation-checked: inverting the sign of the shell-area factor fails five
+      tests, and pairing the geopotential grid with a constant gravity fails three. Energy
+      closure is asserted everywhere — what the surface and every segment absorb must sum to
+      what the planet is said to absorb.</p>
+    <p>HITRAN data is not committed, so the suite builds and runs offline with no network and
+      no external files; the tests that need real lines report themselves as not-run rather
+      than failing.</p>
+  </section>
+
+  <footer>
+    <p>13,507 lines of C# in 53 files — 4,863 of physics in
+      <code>ClimateColumn.Core</code>, 42&nbsp;% of it comment, and 7,240 lines of tests.
+      .NET 8, no runtime dependencies beyond the framework; the WinForms chart adds
+      Windows-only presentation. Numbers throughout are the model&rsquo;s current output, not
+      illustrations.</p>
+  </footer>
+
+</div>
+<style>
+  /* ---- Print. Paper is always light: the dark palette is a screen affordance, and
+         printing it would waste toner and read badly. Forcing the light tokens is
+         therefore a deliberate override of the theme, not a bug. ---- */
+  @page {
+    size: A4;
+    margin: 18mm 17mm 20mm;
+  }
+
+  @media print {
+    :root {
+      --paper:      #ffffff;
+      --raised:     #f7f8fa;
+      --sunk:       #f1f3f6;
+      --ink:        #14171e;
+      --ink-2:      #3f4653;
+      --ink-3:      #666e7c;
+      --rule:       #c9cfd8;
+      --rule-soft:  #dde1e8;
+      --warm:       #8d4f0c;
+      --warm-soft:  #f0e0cb;
+      --cold:       #235875;
+      --cold-soft:  #e8eff4;
+    }
+
+    body {
+      background: #fff;
+      font-size: 10.2pt;
+      line-height: 1.5;
+    }
+
+    .page { max-width: none; padding: 0; }
+
+    /* Keep the structural rail but tighten it for paper. */
+    section { padding-left: 10mm; margin-bottom: 7mm; break-inside: auto; }
+    section::before { left: 2mm; }
+
+    h1 { font-size: 22pt; }
+    .standfirst { font-size: 11.5pt; }
+    .mast { padding-bottom: 6mm; margin-bottom: 8mm; break-after: avoid; }
+
+    h2 { font-size: 13.5pt; break-after: avoid; }
+    h3 { font-size: 8.5pt; margin-top: 5mm; break-after: avoid; }
+    p { orphans: 3; widows: 3; }
+
+    /* Blocks that must not be split across a page boundary. */
+    figure, .eq, .caveat, .results, .tablewrap {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    figure { margin: 5mm 0; }
+    .figbox { padding: 4mm 3mm 2mm; }
+    figure svg { min-width: 0; }
+
+    .results { margin: 5mm 0; }
+    .result { padding: 3mm 3.5mm; }
+    .result dd { font-size: 13pt; }
+
+    /* Scrollers are meaningless on paper. */
+    .tablewrap, .figbox, .eq { overflow: visible; }
+    table { min-width: 0; }
+
+    /* The three physics sections earn a fresh page each; the rest flow. */
+    section.key { break-before: page; }
+    section.key:first-of-type { break-before: auto; }
+
+    footer { break-inside: avoid; margin-top: 8mm; padding-top: 4mm; font-size: 8.8pt; }
+
+    /* Print the artifact URL so a paper copy can be traced back to the live one. */
+    footer::after {
+      content: "Live version: claude.ai/code/artifact/0f1520a8-32b4-4487-9a68-03d87b83ca5f";
+      display: block;
+      margin-top: 3mm;
+      font-family: var(--mono);
+      font-size: 8pt;
+      color: var(--ink-3);
+    }
+  }
+</style>
+</body>
+</html>

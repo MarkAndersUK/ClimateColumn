@@ -1,0 +1,139 @@
+═══════════════════════════════════════════════════════════════════
+VERSION A — the physics (~1,350 characters)
+═══════════════════════════════════════════════════════════════════
+
+I built a 1-D radiative-convective atmospheric column model in C#, and
+the part I didn't expect was what it took to make CO2 behave properly.
+
+Everyone knows CO2 forcing is logarithmic — each doubling adds roughly
+the same warming. What's less obvious is that this is not a
+thermodynamic law. It's a property of the shape of the absorption
+spectrum, and if you model the atmosphere as a single grey absorber you
+cannot reproduce it at all.
+
+Here's the mechanism. At present-day concentrations the core of CO2's
+15 µm band is already opaque — adding more changes nothing there. The
+forcing comes from the band's flanks, where absorption is still weak.
+So the law you get depends entirely on how absorption falls off away
+from the band centre. Exponential falloff gives you a logarithm. A
+single isolated pressure-broadened line, with its 1/Δν² Lorentz wing,
+would give you a square root instead.
+
+That's testable, so I tested it. With a tuned grey absorber, the
+model's forcing ratio against the accepted law grows from 1.17 to 2.14
+across 285–1000 ppm: the wrong shape, not merely the wrong magnitude.
+Replace it with sixteen spectral bands derived from real HITRAN line
+data and it straightens out — fitting F = A·ln(C/C₀) gives A between
+6.84 and 7.10 W/m² per ln, a 3.6% drift across a 3.5× concentration
+range.
+
+The absorber amount is exactly linear in concentration. The logarithm
+is produced entirely by the band structure. That's the spectroscopy
+doing the work, and it's genuinely satisfying to watch it emerge from
+measured line strengths rather than being fitted in.
+
+13,507 lines of C#, .NET 8, more test than source.
+
+#ClimateModelling #ComputationalPhysics #CSharp #DotNet #Spectroscopy
+
+
+═══════════════════════════════════════════════════════════════════
+VERSION B — short (~650 characters)
+═══════════════════════════════════════════════════════════════════
+
+CO2 forcing is logarithmic — each doubling adds about the same warming.
+I'd always filed that under "known fact". Building a radiative-
+convective column model in C# taught me it isn't a law at all.
+
+It's a property of the absorption spectrum. The band centre is already
+saturated, so the forcing comes from the wings — and the falloff shape
+there decides the law. Exponential wings give a logarithm. A single
+Lorentz line would give a square root.
+
+Model it as one grey absorber and you can't reproduce it: the forcing
+ratio drifts from 1.17 to 2.14 across 285–1000 ppm. Use sixteen bands
+derived from HITRAN line data and the response is logarithmic to 3.6% —
+with the absorber amount exactly linear in concentration.
+
+The spectroscopy does all the work.
+
+#ComputationalPhysics #CSharp #ClimateModelling
+
+
+═══════════════════════════════════════════════════════════════════
+VERSION C — the one I'd actually post: two errors cancelling
+(~1,500 characters)
+═══════════════════════════════════════════════════════════════════
+
+My atmospheric model was getting the right answer for the wrong reason,
+and it took three failed hypotheses to find out.
+
+Background: CO2 forcing should go as ln(concentration). Mine did, to
+2.7% — suspiciously good. I went looking for the residual.
+
+Hypothesis 1: the k-distribution quadrature was too coarse. I wrote the
+test that would confirm it — refine the quadrature, watch the error
+fall. It doubled.
+
+Hypothesis 2: the band absorption distributions were being extrapolated
+away from where they were derived, which the project's own notes warn
+against. Fixed that. It got worse again.
+
+Hypothesis 3, and the right one: the line wings were truncated at
+15 cm⁻¹ from band centre. That matters because the logarithm *comes
+from* the far wings — the band core is saturated, so all the action is
+in the flanks. I'd been throwing away the exact part of the spectrum
+that produces the effect I was measuring.
+
+But the punchline is what widening the cutoff revealed. Alone, it
+pushed the forcing coefficient from 6.99 to 9.35 — badly wrong. The
+truncated wings had been silently compensating for a too-coarse band
+split. Two substantial errors, cancelling, producing a suspiciously
+perfect result.
+
+Properly converged — 16 bands, 16 quadrature points, 400 cm⁻¹ wings,
+and a recalibrated absorber amount — the coefficient lands at 6.84–7.10
+against a published 5.35. The headline number barely moved: 1.32× to
+1.33×. Everything I'd concluded from it was still true.
+
+But it's now true because the numbers are converged, not because two
+mistakes happened to agree.
+
+If your numerical result looks unreasonably good, check whether it
+survives being refined. Mine didn't.
+
+#SoftwareEngineering #ComputationalPhysics #NumericalMethods #CSharp
+
+
+═══════════════════════════════════════════════════════════════════
+NOTES BEFORE YOU POST
+═══════════════════════════════════════════════════════════════════
+
+• Every number is measured from the model as it now stands, after the
+  convergence study: 1.17→2.14 grey drift, A = 6.84–7.10, 3.6% drift,
+  the 6.99→9.35 cutoff result, 1.32→1.33, 13,507 lines. Raw data in
+  artifacts/convergence-study.txt.
+
+• Version C is the stronger post. Version A is the better one if the
+  audience is climate/physics rather than software.
+
+• The model is a learning/demonstration project. If a thread goes
+  there: the absorber amounts are scaled to reach an Earth-like
+  present-day surface rather than taken from observations, so the CO2
+  response is spectroscopically grounded but is not an independent
+  estimate of climate sensitivity. The claim is about mechanism, not
+  about predicting warming. Say that plainly rather than let it be
+  inferred.
+
+• One caveat worth holding in reserve: the ~3.6% residual drift does
+  not fall at any resolution tested, so it's a real departure rather
+  than a numerical artefact — but it hasn't been traced to a mechanism
+  either. Don't claim it has.
+
+• LinkedIn strips most formatting. Em dashes, µ, Δν, ², ³, ⁻ and R² all
+  paste fine. If superscripts don't survive, write "1/(delta-nu
+  squared)" and "W/m2".
+
+• Repo is private. If you make it public, put the link in a first
+  comment rather than the post body — LinkedIn suppresses reach on
+  posts with outbound links.

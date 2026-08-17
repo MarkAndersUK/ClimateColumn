@@ -86,16 +86,38 @@ public sealed class Co2Sweep
     public double Overshoot(int i) => Points[i].SurfaceTemperature - Expected(i);
 
     /// <summary>Runs a configuration across every concentration and measures its forcings.</summary>
-    public static Co2Sweep Run(string label, string command, Func<ModelOptions> configure)
+    public static Co2Sweep Run(string label, string command, Func<ModelOptions> configure) =>
+        Run(label, command, ppm =>
+        {
+            var options = configure();
+            options.Co2Concentration = ppm;
+            return options;
+        });
+
+    /// <summary>
+    /// As above, but the configuration is built per concentration rather than once and then had
+    /// its CO2 dialled in.
+    /// </summary>
+    /// <remarks>
+    /// This exists for the spectral configuration, where the difference matters. A band carries
+    /// two things that depend on how much CO2 is present: its mean optical depth, which
+    /// <see cref="SpectralBand.OpticalDepthAt"/> scales correctly with concentration, and its
+    /// k-distribution, which does not scale at all - it is measured from a resolved spectrum at
+    /// whatever amounts it was derived with. Dialling CO2 up therefore stretches the mean while
+    /// leaving the distribution describing a different atmosphere.
+    ///
+    /// Giving the caller the concentration lets it re-derive instead of extrapolate.
+    /// </remarks>
+    public static Co2Sweep Run(string label, string command, Func<double, ModelOptions> configure)
     {
-        var reference = ColumnModel.RunToEquilibrium(WithConcentration(configure, Concentrations[0]));
+        var reference = ColumnModel.RunToEquilibrium(configure(Concentrations[0]));
 
         var points = new List<Co2Point>();
         var forcings = new List<double>();
 
         for (int i = 0; i < Concentrations.Length; i++)
         {
-            var options = WithConcentration(configure, Concentrations[i]);
+            var options = configure(Concentrations[i]);
             var result = i == 0 ? reference : ColumnModel.RunToEquilibrium(options);
 
             points.Add(new Co2Point(
@@ -111,11 +133,28 @@ public sealed class Co2Sweep
         };
     }
 
-    private static ModelOptions WithConcentration(Func<ModelOptions> configure, double ppm)
+    /// <summary>
+    /// The forcing curve alone, without equilibrating at every concentration.
+    /// </summary>
+    /// <remarks>
+    /// Instantaneous forcing is defined at <em>held</em> temperatures, so it needs one radiation
+    /// solve per concentration and one equilibrium march in total - the reference state. A full
+    /// <see cref="Run"/> marches to equilibrium nine times because it also wants the temperature
+    /// response, which a study of the forcing law does not.
+    ///
+    /// That is a ninefold saving, and it is what makes a resolution-convergence study affordable
+    /// at 32 or 64 g-points, where the equilibrium march is the whole cost.
+    /// </remarks>
+    public static IReadOnlyList<double> ForcingCurve(Func<double, ModelOptions> configure)
     {
-        var options = configure();
-        options.Co2Concentration = ppm;
-        return options;
+        var reference = ColumnModel.RunToEquilibrium(configure(Concentrations[0]));
+
+        var forcings = new double[Concentrations.Length];
+        for (int i = 0; i < Concentrations.Length; i++)
+        {
+            forcings[i] = ForcingFrom(reference, configure(Concentrations[i]));
+        }
+        return forcings;
     }
 
     /// <summary>
@@ -164,7 +203,73 @@ public sealed class Co2Sweep
     /// Returns null rather than throwing so the charts can simply show two curves when the data is
     /// absent.
     /// </remarks>
-    public static Co2Sweep? SpectralBands()
+    /// <summary>
+    /// The spectrally derived sweep.
+    /// </summary>
+    /// <param name="rederive">
+    /// Re-derive the bands at every concentration rather than deriving once at the reference and
+    /// scaling. See the remarks - this is the difference between the response being logarithmic
+    /// and merely nearly so.
+    /// </param>
+    /// <remarks>
+    /// A band carries two concentration-dependent things, and only one of them scales. Its mean
+    /// optical depth scales exactly, through <see cref="SpectralBand.OpticalDepthAt"/>. Its
+    /// k-distribution does not scale at all: it is measured from a resolved spectrum, and the
+    /// spectrum it was measured from had a particular amount of CO2 in it. Deriving once and then
+    /// dialling CO2 up stretches the mean while the distribution goes on describing the reference
+    /// atmosphere - which is exactly what the project's own notes on gas overlap warn against.
+    ///
+    /// Re-deriving costs a full band derivation per concentration. That is the expensive part of
+    /// the sweep, but it is not in any inner loop: the bands are built once per equilibrium run,
+    /// not once per timestep.
+    ///
+    /// The resolution parameters are arguments so that convergence can be measured rather than
+    /// assumed, and the defaults are what that measurement settled on. The study is recorded in
+    /// artifacts/convergence-study.txt; its conclusions were not what was expected, so they are
+    /// worth stating.
+    ///
+    /// <strong>The wing cutoff is the parameter that matters most</strong>, which in hindsight
+    /// follows from where the logarithm comes from: the far wings. Truncating them at 15 cm^-1,
+    /// as this configuration originally did, discards exactly the part of the spectrum that makes
+    /// the response logarithmic. Widening to 400 cm^-1 converges the forcing coefficient; 800
+    /// moves it a further 1%.
+    ///
+    /// <strong>The old 8 bands x 4 g-points at a 15 cm^-1 cutoff got the right answer by
+    /// cancellation.</strong> It reported A = 6.994 against a converged 6.9-7.1, but only because
+    /// its truncated wings and coarse band split compensated. Widening the cutoff alone took it
+    /// to 9.35, badly wrong - the two errors had to move together. That fragility, not the value,
+    /// is why the defaults changed.
+    ///
+    /// <strong>The absorber scale is resolution dependent.</strong> It exists to put the base
+    /// state at an Earth-like surface temperature, and the 13.0 that did so at the old resolution
+    /// leaves the surface 2.4 K too cold here; 14.5781 restores it. Changing resolution without
+    /// re-calibrating changes two things at once - see SpectralCalibrationTests, which bisects it.
+    /// </remarks>
+    public static Co2Sweep? SpectralBands(
+        int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
+        bool rederive = false, double wingCutoff = 400.0, double absorberScale = 14.5781)
+    {
+        var configure = SpectralConfiguration(bandCount, gPoints, segmentCount, samples, rederive, wingCutoff, absorberScale);
+        if (configure is null) return null;
+
+        return Run(
+            "Derived from HITRAN bands",
+            $"see Co2Sweep.SpectralBands - 6 molecules, {bandCount} derived bands, {gPoints} g-points" +
+            (rederive ? ", re-derived per concentration" : ""),
+            configure);
+    }
+
+    /// <summary>
+    /// The configuration behind <see cref="SpectralBands"/>, as a function from concentration to
+    /// options, or null when the HITRAN line lists have not been fetched.
+    /// </summary>
+    /// <remarks>
+    /// Exposed so that <see cref="ForcingCurve"/> can be driven at high resolutions without
+    /// paying for nine equilibrium marches.
+    /// </remarks>
+    public static Func<double, ModelOptions>? SpectralConfiguration(
+        int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
+        bool rederive = false, double wingCutoff = 400.0, double absorberScale = 14.5781)
     {
         // Relative amounts per gas, then a common scale chosen for the base state.
         var recipe = new (string File, AbsorberKind Kind, double Share, bool Co2)[]
@@ -177,34 +282,75 @@ public sealed class Co2Sweep
             (HitranLineList.NitrousOxideSevenEightMicron, AbsorberKind.WellMixed, 0.1, false)
         };
 
-        const double scale = 13.0;
+        double scale = absorberScale;
 
-        var molecules = new List<BandDerivation.Molecule>();
+        // Line lists are loaded once even when re-deriving; it is the derivation that repeats,
+        // not the file I/O.
+        var lines = new List<(IReadOnlyList<SpectralLine> Lines, AbsorberKind Kind, double Amount,
+                              bool Co2, string File)>();
         foreach (var (file, kind, share, co2) in recipe)
         {
             string? path = HitranLineList.DefaultPath(file);
             if (path is null) return null;
 
-            molecules.Add(new BandDerivation.Molecule(
-                HitranLineList.Load(path, minimumIntensity: 1e-26),
+            lines.Add((HitranLineList.Load(path, minimumIntensity: 1e-26),
                 kind, share * scale, co2, file));
         }
 
-        var bands = BandDerivation.DeriveShared(
-            molecules, fromWavenumber: 100, toWavenumber: 2000, bandCount: 8,
-            samples: 80_000, gPoints: 4, wingCutoff: 15.0,
-            continuumOpticalDepth: 1.2 * scale);
+        // Bands derived with CO2 present at the given multiple of its reference amount.
+        IReadOnlyList<SpectralBand> Derive(double co2Ratio)
+        {
+            var molecules = lines
+                .Select(m => new BandDerivation.Molecule(
+                    m.Lines, m.Kind, m.Co2 ? m.Amount * co2Ratio : m.Amount, m.Co2, m.File))
+                .ToList();
 
-        return Run(
-            "Derived from HITRAN bands",
-            "see Co2Sweep.SpectralBands - 6 molecules, 8 derived bands",
-            () => new ModelOptions
+            return BandDerivation.DeriveShared(
+                molecules, fromWavenumber: 100, toWavenumber: 2000, bandCount: bandCount,
+                samples: samples, gPoints: gPoints, wingCutoff: wingCutoff,
+                continuumOpticalDepth: 1.2 * scale);
+        }
+
+        var referenceBands = rederive ? null : Derive(1.0);
+        double referencePpm = Concentrations[0];
+
+        // Re-derivation is memoised: ForcingCurve asks for each concentration twice (once for the
+        // reference march, once for the forcing solve) and a derivation is the expensive step.
+        var cache = new Dictionary<double, SpectralBand[]>();
+
+        return ppm =>
             {
-                SegmentCount = 30,
-                Bands = bands.ToArray(),
-                WaterVapourOpticalDepth = 1.0,
-                OzoneFraction = 0.3
-            });
+                SpectralBand[] bands;
+                double concentration;
+
+                if (rederive)
+                {
+                    // The derivation already holds this concentration's CO2, so the band mean must
+                    // not be scaled a second time: Co2Fraction is zeroed.
+                    if (!cache.TryGetValue(ppm, out bands!))
+                    {
+                        bands = Derive(ppm / referencePpm)
+                            .Select(b => b with { Co2Fraction = 0.0 })
+                            .ToArray();
+                        cache[ppm] = bands;
+                    }
+                    concentration = ppm;
+                }
+                else
+                {
+                    bands = referenceBands!.ToArray();
+                    concentration = ppm;
+                }
+
+                return new ModelOptions
+                {
+                    Co2Concentration = concentration,
+                    SegmentCount = segmentCount,
+                    Bands = bands,
+                    WaterVapourOpticalDepth = 1.0,
+                    OzoneFraction = 0.3
+                };
+            };
     }
 
     /// <summary>The configuration used for the README's water-vapour-feedback calibration.</summary>

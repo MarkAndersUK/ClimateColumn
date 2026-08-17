@@ -21,7 +21,10 @@ namespace ClimateColumn.Core;
 /// guarantees the weights sum to exactly one however the intervals are chosen - which is what
 /// keeps energy closure exact.
 /// </remarks>
-public sealed class SpectralBand
+// A record rather than a plain class so that a derived band can be copied with one property
+// changed - the concentration sweep needs to clear Co2Fraction on bands whose derivation already
+// holds the right amount of CO2, without rebuilding all nine properties by hand.
+public sealed record SpectralBand
 {
     /// <summary>Short-wavelength edge, m. Zero, with <see cref="LongWavelength"/>, marks the remainder band.</summary>
     public double ShortWavelength { get; init; }

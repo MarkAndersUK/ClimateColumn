@@ -12,3 +12,6 @@ TestResults/
 # Generated: model CSV profiles and the chart the test suite writes
 *.csv
 artifacts/
+
+# Generated from docs/model-description.html; regenerate with headless Chrome.
+docs/*.pdf

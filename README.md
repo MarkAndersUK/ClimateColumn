@@ -855,29 +855,61 @@ about.
 
 #### What the chart shows
 
-`Co2Sweep.SpectralBands()` — six molecules in eight bands derived from their own line strengths, so
+`Co2Sweep.SpectralBands()` — six molecules in sixteen bands derived from their own line strengths, so
 the CO₂ response comes out of the spectroscopy rather than being calibrated in. **This is the only
 configuration plotted.** The calibrated grey ones are still swept, because the findings about them
 above are real, but a grey curve beside the spectral one invited the figure to be read as a
 comparison of two models rather than as one model against the forcing law it ought to follow.
 
-The dashed curve is **not** from the line data, and the chart says so. It is what the same
-configuration would give if its forcing followed the accepted $5.35\ln(C/C_0)$ at its own measured
-sensitivity — so the two coincide at the calibration point by construction and separate only where
-the model's forcing departs from logarithmic.
+The dashed curve is **not** from the line data, and the chart says so: it is the accepted
+$5.35\ln(C/C_0)$ itself. Both curves are forcing in W m⁻², so nothing is converted and no
+sensitivity is borrowed — they meet at 285 ppm because the forcing against the reference is zero
+there by definition, not by calibration.
 
 | relative to 285 ppm | model forcing | accepted | ratio |
 |---|---|---|---|
-| 350 ppm | 1.49 | 1.10 | 1.35 |
-| 500 ppm | 4.02 | 3.01 | 1.34 |
-| 700 ppm | 6.36 | 4.81 | 1.32 |
-| 1000 ppm | 8.84 | 6.72 | **1.32** |
+| 350 ppm | 1.405 | 1.099 | 1.28 |
+| 500 ppm | 3.853 | 3.007 | 1.28 |
+| 700 ppm | 6.227 | 4.807 | 1.30 |
+| 1000 ppm | 8.909 | 6.716 | **1.33** |
 
-**The shape is right; the scale is not.** The ratio is flat at ~1.33 across the whole range, and the
-warming ratio is 1.673 against the logarithmic prediction of 1.686. So the model's concentration
-*dependence* is close to logarithmic, as a real gas is — what is wrong is a near-uniform scale
-factor. That is a far more tractable failure than the calibrated grey model's, whose ratio grew from
-1.17 to 2.14 across the same span because its absorber was diluted rather than resolved.
+**The shape is right; the scale is not.** Fitting $F = A\ln(C/C_0)$ gives $A$ between 6.84 and 7.10
+W m⁻² per ln — a **3.6 %** drift across a 3.5× concentration range, against the accepted 5.35. So
+the model's concentration *dependence* is logarithmic to a few percent, as a real gas is; what is
+wrong is a near-uniform scale factor of about 1.3. That is a far more tractable failure than the
+calibrated grey model's, whose ratio grew from 1.17 to 2.14 across the same span because its
+absorber was diluted rather than resolved.
+
+The ratio now *rises* gently with concentration, 1.28 → 1.33. Under the previous under-resolved
+settings it fell, 1.35 → 1.32. The magnitude of the departure is much the same; its sign is not,
+which is a fair warning about how much weight the residual drift can carry.
+
+The absorber amount is *exactly* linear in concentration, so the logarithm is produced entirely by
+the band structure. That is the point of the exercise.
+
+#### Why these resolution settings, and not others
+
+Sixteen bands, sixteen g-points, a **400 cm⁻¹ wing cutoff** and an absorber scale of 14.578. Those
+are not arbitrary — they came out of a convergence study (`artifacts/convergence-study.txt`), and it
+found three things worth stating because none of them was expected.
+
+**The wing cutoff matters most**, which in hindsight follows from where the logarithm comes from.
+Truncating the wings discards exactly the far-wing absorption that makes the response logarithmic.
+Widening 15 → 400 cm⁻¹ converges $A$; 800 moves it a further 1 %.
+
+**The previous settings — 8 bands, 4 g-points, a 15 cm⁻¹ cutoff — got the right answer by error
+cancellation.** They reported $A = 6.99$ against a converged 6.9–7.1, but only because truncated
+wings and a coarse band split compensated. Widening the cutoff *alone* took that configuration to
+$A = 9.35$, badly wrong. Two errors had to move together, and that fragility — not the value — is
+why the settings changed. The published ratio barely moved: 1.32 → 1.33.
+
+**The absorber scale is resolution dependent.** It exists to put the base state at an Earth-like
+surface, and the 13.0 that did so at the old resolution leaves the surface 2.4 K too cold here.
+`SpectralCalibrationTests` bisects it back to 286.796 K, so resolution and calibration are not
+allowed to change at the same time.
+
+The honest residue: the ~3.6 % drift does not fall further at any resolution tested, so it is a real
+departure rather than a numerical artefact.
 
 Read it as spectroscopy, not prediction. The absorber amounts are scaled to reach an Earth-like
 present-day surface rather than taken from observed concentrations, and the continuum that closes
@@ -886,8 +918,9 @@ bands exist, how opaque each is relative to the others, and the distribution of 
 each — and that structure is what makes the concentration dependence come out nearly right.
 
 The charts skip rather than fall back when the line lists are absent: a figure captioned as spectral
-must not quietly show something else. The sweep is nine equilibria at eight bands with four g-points,
-about 30 seconds — most of the suite's runtime.
+must not quietly show something else. The sweep is nine equilibria at sixteen bands with sixteen
+g-points, about 150 seconds — by far the largest part of the suite's runtime, and the price of
+using a converged configuration rather than a lucky one.
 
 #### Plotting it
 
@@ -1086,10 +1119,13 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 - **The spectral chart series is scaled, not fitted.** Its absorber amounts reach an Earth-like base
   state by construction rather than from observed concentrations, and its continuum is added rather
   than derived, so its CO₂ response is spectroscopically grounded but not an independent estimate.
-- **The chart's reference cancels sensitivity out.** The dashed curve uses the model's own
-  d$T$/d$F$ — 0.639 K per W m⁻², measured from its 285→425 ppm step — so the comparison tests the
-  concentration dependence of the *forcing* alone. If the sensitivity were itself wrong, both curves
-  would be wrong together and the figure would look no different.
+- **The forcing comparison borrows nothing, but it only tests the forcing.** Both plotted curves are
+  W m⁻², so no sensitivity is used to convert either. The trade is that the chart says nothing about
+  whether the *temperature* response is right: the configuration's own d$T$/d$F$ is 0.729 K per
+  W m⁻², and nothing here checks it against anything.
+- **The ~3.6 % logarithmic drift is unexplained.** It does not fall at any resolution tested — more
+  g-points, more bands and a wider wing cutoff all leave it between 2 % and 5 % — so it is not a
+  numerical artefact, but nor has it been traced to a mechanism.
 - **Shortwave is still a single grey channel.** All the spectral work is on the longwave side;
   solar absorption is a prescribed fraction split by air mass and a Chapman profile.
 - **The diffusivity is band-independent.** $D = 2$ is exact in the optically *thin* limit,
