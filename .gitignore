@@ -1,0 +1,14 @@
+# Build output
+bin/
+obj/
+
+# Test runner output
+TestResults/
+
+# Visual Studio local state
+.vs/
+*.user
+
+# Generated: model CSV profiles and the chart the test suite writes
+*.csv
+artifacts/

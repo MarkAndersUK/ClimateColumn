@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!--
+      WinForms is Windows-only, so this project targets net8.0-windows while Core, the CLI
+      and the tests stay on plain net8.0 and remain cross-platform. Nothing depends on this
+      project, so a non-Windows build of the solution simply skips it.
+    -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>ClimateColumn.Charts</RootNamespace>
+    <AssemblyName>climatecolumn-charts</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ClimateColumn.Core\ClimateColumn.Core.csproj" />
+  </ItemGroup>
+
+</Project>
