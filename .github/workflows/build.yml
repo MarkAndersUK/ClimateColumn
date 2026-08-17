@@ -1,0 +1,133 @@
+name: build
+
+# Two jobs, because this project makes two promises worth checking separately: that it
+# builds and passes its tests, and that the physics half of it does so with no network
+# and no package sources at all.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: build and test
+    runs-on: windows-latest   # ClimateColumn.Charts targets net8.0-windows (WinForms)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # nuget.config deliberately clears every package source so that a developer's restore
+      # never reaches the network - see the comment in that file. A fresh runner has no
+      # populated cache, so the source is supplied here instead. Passing it on the command
+      # line overrides the cleared sources for this restore only, leaving the committed
+      # offline-first configuration untouched.
+      - name: Restore
+        run: dotnet restore --source https://api.nuget.org/v3/index.json
+
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      # The suite is invoked exactly as it is locally. These projects use the MSTest runner
+      # (Microsoft.Testing.Platform) rather than VSTest, so `dotnet run` is the entry point
+      # and `dotnet test` would not behave the same way.
+      #
+      # No HITRAN line lists are present on a runner, and that is the point: every test that
+      # needs them reports itself inconclusive rather than failing, so a green run here is
+      # evidence the no-data path still works. The skip count is printed for that reason.
+      - name: Test
+        run: dotnet run --project tests/ClimateColumn.Tests -c Release --no-build
+
+      - name: Test the charts
+        run: dotnet run --project tests/ClimateColumn.Charts.Tests -c Release --no-build
+
+      # A regression here would be silent otherwise: the headline equilibrium is quoted
+      # throughout the README, and nothing else in the suite pins all three numbers together
+      # from the outside.
+      - name: Check the documented default equilibrium
+        shell: pwsh
+        run: |
+          $out = dotnet run --project src/ClimateColumn.Cli -c Release --no-build
+          $text = $out -join "`n"
+
+          $expected = @(
+            'surface temperature       :    286.797 K',
+            'outgoing longwave (TOA)   :    238.175 W/m2',
+            'convecting layer top      :       3.44 km'
+          )
+
+          $failed = $false
+          foreach ($line in $expected) {
+            if ($text -notmatch [regex]::Escape($line)) {
+              Write-Host "::error::missing from CLI output: $line"
+              $failed = $true
+            } else {
+              Write-Host "ok: $line"
+            }
+          }
+          if ($failed) {
+            Write-Host '--- full output ---'
+            Write-Host $text
+            exit 1
+          }
+
+  offline:
+    name: offline build, no package sources
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # The claim being tested: ClimateColumn.Core and ClimateColumn.Cli have no package
+      # dependencies at all, so they restore and build from a cold cache with every source
+      # cleared. That is what makes the model usable on an air-gapped machine, and it is the
+      # kind of property that decays quietly the first time someone adds a convenient
+      # dependency. Here restore runs against the committed nuget.config as-is, with no
+      # --source override, so adding one would fail this job.
+      #
+      # Ubuntu also makes this a cross-platform check on the physics, which is
+      # framework-only and should not care what it runs on.
+      - name: Restore Core and Cli with no sources
+        run: |
+          dotnet restore src/ClimateColumn.Core
+          dotnet restore src/ClimateColumn.Cli
+
+      - name: Build Core and Cli
+        run: |
+          dotnet build src/ClimateColumn.Core -c Release --no-restore
+          dotnet build src/ClimateColumn.Cli -c Release --no-restore
+
+      # Checked with a tolerance rather than by string match, unlike the Windows job. The
+      # documented figures were measured on Windows, and Math.Exp and Math.Pow are not
+      # guaranteed bit-identical across platforms, so an exact comparison here would fail on a
+      # last-digit difference that means nothing. 0.01 K is far tighter than any regression
+      # worth catching and far looser than that.
+      - name: Run the model on Linux and check it agrees with the documented equilibrium
+        run: |
+          dotnet run --project src/ClimateColumn.Cli -c Release --no-build | tee out.txt
+
+          check() {
+            actual=$(grep -oE "$2" out.txt | head -1 | grep -oE '[0-9]+\.[0-9]+')
+            if [ -z "$actual" ]; then
+              echo "::error::could not find $1 in the output"
+              exit 1
+            fi
+            if awk -v a="$actual" -v e="$3" -v t="$4" 'BEGIN{d=a-e; if(d<0)d=-d; exit !(d<t)}'; then
+              echo "ok: $1 = $actual (expected $3 +/- $4)"
+            else
+              echo "::error::$1 = $actual, expected $3 +/- $4"
+              exit 1
+            fi
+          }
+
+          check 'surface temperature' 'surface temperature *: *[0-9.]+'   286.797 0.01
+          check 'outgoing longwave'   'outgoing longwave \(TOA\) *: *[0-9.]+' 238.175 0.01
+          check 'convective top'      'convecting layer top *: *[0-9.]+'  3.44    0.01
