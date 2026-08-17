@@ -79,14 +79,21 @@ public sealed class RadiationResult
 /// fluxes are summed, which reduces exactly to the transparent case when the continuum is
 /// zero - a band with tau = 0 has unit transmittance, so it neither absorbs nor emits and the
 /// surface's window emission passes straight through to space.
+///
+/// Each band may in turn be split into g-points by a correlated-k quadrature
+/// (see KDistribution), representing the spread of absorption coefficients between line cores
+/// and wings. Every g-point is another pass of the same recurrence with the optical depth
+/// scaled, carrying its own share of the spectral interval; a grey band is simply the
+/// one-point case, so the arrangement collapses back to a single pass exactly.
 /// </summary>
 public static class RadiationSolver
 {
     /// <summary>
-    /// One spectral band: the share of each emitter's Planck function it carries, and the
-    /// optical thickness the radiation sees inside it.
+    /// One spectral band: the share of each emitter's Planck function it carries, the optical
+    /// thickness the radiation sees inside it, and how that absorption is distributed across
+    /// the band.
     /// </summary>
-    private readonly record struct Band(double[] Share, double[] Tau);
+    private readonly record struct Band(double[] Share, double[] Tau, KDistribution Structure);
 
     public static RadiationResult Solve(Column column)
     {
@@ -103,8 +110,11 @@ public static class RadiationSolver
         // reduces to the transparent case exactly when the continuum is zero - a band with
         // tau = 0 has unit transmittance, so it neither absorbs nor emits and the surface's
         // window emission passes straight through.
-        var absorbing = new Band(new double[n], new double[n]);
-        var window = new Band(new double[n], new double[n]);
+        // The k-distribution applies to the absorbing band only. The window's continuum stays
+        // grey deliberately: smoothness between the lines is what makes it a continuum, so
+        // giving it line structure would misrepresent it.
+        var absorbing = new Band(new double[n], new double[n], options.BuildKDistribution());
+        var window = new Band(new double[n], new double[n], KDistribution.Grey);
 
         for (int i = 0; i < n; i++)
         {
@@ -132,49 +142,60 @@ public static class RadiationSolver
 
         for (int b = 0; b < bands.Length; b++)
         {
-            var (share, tau) = bands[b];
+            var (share, tau, structure) = bands[b];
 
-            var transmittance = new double[n];
-            var absorptivity = new double[n];
-            for (int i = 0; i < n; i++)
+            // Each g-point is a pseudo-monochromatic sub-band: the same recurrence, with the
+            // optical depth scaled by that sub-band's absorption coefficient, and its result
+            // carrying the sub-band's share of the spectral interval. Summing them is the
+            // k-distribution integral over cumulative probability.
+            for (int j = 0; j < structure.Points; j++)
             {
-                transmittance[i] = Math.Exp(-tau[i]);
-                absorptivity[i] = 1.0 - transmittance[i];
-            }
+                double weight = structure.Weights[j];
+                double multiplier = structure.Multipliers[j];
 
-            var bandDown = new double[n + 1];
-            var bandUp = new double[n + 1];
+                var transmittance = new double[n];
+                var absorptivity = new double[n];
+                for (int i = 0; i < n; i++)
+                {
+                    transmittance[i] = Math.Exp(-multiplier * tau[i]);
+                    absorptivity[i] = 1.0 - transmittance[i];
+                }
 
-            // No longwave enters the top of the column, in any band.
-            bandDown[n] = 0.0;
-            for (int i = n - 1; i >= 0; i--)
-            {
-                bandDown[i] = bandDown[i + 1] * transmittance[i] +
-                              absorptivity[i] * share[i] * blackbody[i];
-            }
+                var bandDown = new double[n + 1];
+                var bandUp = new double[n + 1];
 
-            // Surface: this band's share of the Stefan-Boltzmann emission, plus specular
-            // reflection of the back radiation arriving in this band.
-            bandUp[0] = epsS * surfaceShare[b] * surfaceBlackbody + (1.0 - epsS) * bandDown[0];
+                // No longwave enters the top of the column, in any sub-band.
+                bandDown[n] = 0.0;
+                for (int i = n - 1; i >= 0; i--)
+                {
+                    bandDown[i] = bandDown[i + 1] * transmittance[i] +
+                                  absorptivity[i] * weight * share[i] * blackbody[i];
+                }
 
-            for (int i = 0; i < n; i++)
-            {
-                bandUp[i + 1] = bandUp[i] * transmittance[i] +
-                                absorptivity[i] * share[i] * blackbody[i];
-            }
+                // Surface: this sub-band's share of the Stefan-Boltzmann emission, plus
+                // specular reflection of the back radiation arriving in it.
+                bandUp[0] = epsS * weight * surfaceShare[b] * surfaceBlackbody +
+                            (1.0 - epsS) * bandDown[0];
 
-            for (int i = 0; i <= n; i++)
-            {
-                up[i] += bandUp[i];
-                down[i] += bandDown[i];
-            }
+                for (int i = 0; i < n; i++)
+                {
+                    bandUp[i + 1] = bandUp[i] * transmittance[i] +
+                                    absorptivity[i] * weight * share[i] * blackbody[i];
+                }
 
-            for (int i = 0; i < n; i++)
-            {
-                absorbed[i] += absorptivity[i] * (bandUp[i] + bandDown[i + 1]);
+                for (int i = 0; i <= n; i++)
+                {
+                    up[i] += bandUp[i];
+                    down[i] += bandDown[i];
+                }
 
-                // Emission is shared equally between the two hemispheres.
-                emission[i] += 2.0 * absorptivity[i] * share[i] * blackbody[i];
+                for (int i = 0; i < n; i++)
+                {
+                    absorbed[i] += absorptivity[i] * (bandUp[i] + bandDown[i + 1]);
+
+                    // Emission is shared equally between the two hemispheres.
+                    emission[i] += 2.0 * absorptivity[i] * weight * share[i] * blackbody[i];
+                }
             }
         }
 

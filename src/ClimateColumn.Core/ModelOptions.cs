@@ -174,6 +174,41 @@ public sealed class ModelOptions
     public bool HasWindowContinuum =>
         HasWindow && WindowContinuumOpticalDepth > 0.0 && WaterVapourOpticalDepth > 0.0;
 
+    /// <summary>
+    /// How absorption is distributed within the absorbing band.
+    /// <see cref="KDistributionShape.Grey"/> (the default) is one coefficient for the whole
+    /// band, which is what the rest of the model assumes.
+    /// </summary>
+    /// <remarks>
+    /// Absorption inside a real band spans orders of magnitude, and a single coefficient
+    /// systematically overestimates how opaque the band is: transmission is dominated by the
+    /// weak wings, not the mean. A correlated-k quadrature fixes that while preserving the
+    /// band-mean absorber amount, so the column holds exactly as much gas as before.
+    ///
+    /// It applies to the absorbing band only. The window's continuum stays grey deliberately -
+    /// smoothness between the lines is what makes it a continuum, so giving it line structure
+    /// would be wrong.
+    /// </remarks>
+    public KDistributionShape KDistributionShape { get; set; } = KDistributionShape.Grey;
+
+    /// <summary>
+    /// Spread of absorption coefficients within the band. For
+    /// <see cref="KDistributionShape.Lognormal"/> this is the log standard deviation, and 0
+    /// collapses exactly onto a grey band. 1.5 is a moderately non-grey band.
+    /// </summary>
+    public double KDistributionWidth { get; set; } = 0.0;
+
+    /// <summary>
+    /// Number of quadrature points (g-points) across the band. Each one costs another pass of
+    /// the flux recurrence, so this is the accuracy/speed dial; 16 is ample for the shapes
+    /// here.
+    /// </summary>
+    public int KDistributionPoints { get; set; } = 16;
+
+    /// <summary>Builds the quadrature these options describe.</summary>
+    public KDistribution BuildKDistribution() =>
+        KDistribution.Build(KDistributionShape, KDistributionWidth, KDistributionPoints);
+
     /// <summary>True when a window of non-zero width has been configured.</summary>
     public bool HasWindow => WindowLongWavelength > WindowShortWavelength;
 
@@ -309,6 +344,12 @@ public sealed class ModelOptions
                 "WindowLongWavelength must be greater than WindowShortWavelength.");
         if (WindowContinuumOpticalDepth < 0)
             throw new ArgumentException("WindowContinuumOpticalDepth must be >= 0.");
+        if (KDistributionWidth < 0)
+            throw new ArgumentException("KDistributionWidth must be >= 0.");
+        if (KDistributionPoints is < 1 or > 256)
+            throw new ArgumentException(
+                "KDistributionPoints must be in [1, 256]; the Gauss-Hermite nodes lose accuracy " +
+                "beyond that, and 16 points already give a transmission error near 1e-4.");
         if (ContinuumForeignFraction is < 0 or > 1)
             throw new ArgumentException("ContinuumForeignFraction must be in [0, 1].");
         if (WindowContinuumOpticalDepth > 0 && WaterVapourOpticalDepth <= 0)

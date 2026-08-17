@@ -139,6 +139,47 @@ it is heavily bottom-heavy, so the window goes opaque close to the ground and ke
 from air only a little cooler than the surface. More continuum raises that emission level
 slowly, so the trapped fraction climbs monotonically but never approaches one.
 
+**Line structure within a band** (`--k-distribution`, `--k-width`, `--k-points`). Absorption
+inside a real band spans orders of magnitude — strong line cores, weak wings — and a single
+coefficient systematically overstates how opaque the band is, because transmission is
+dominated by the wings rather than the mean. A correlated-k quadrature fixes that.
+
+Transmission depends only on the *distribution* of $k$ across the band, not on where in the
+band each value sits, so reordering $k$ by magnitude gives a monotonic $k(g)$ over the
+cumulative fraction $g$ and
+
+$$T(u) = \int_0^1 e^{-k(g)u}\,\mathrm{d}g \;\approx\; \sum_j w_j e^{-k_j u}.$$
+
+Each $(w_j, k_j)$ is a pseudo-monochromatic sub-band run through the ordinary recurrence, and
+the results summed. Two properties are enforced by construction, and both matter: the weights
+sum to 1, and the weighted mean of $k_j$ is exactly the band mean. The second is what stops a
+k-distribution from quietly changing how much absorber the column holds — and it means the
+**optically thin limit is untouched**, since $\langle 1 - e^{-ku}\rangle \to \langle k\rangle u$,
+so the Koenigsberger correspondence and the $D = 2$ closure survive unchanged. Both are
+asserted.
+
+The quadrature rule matters more than it looks. Sampling the inverse CDF at equal-probability
+midpoints is the obvious approach and converges appallingly — about $N^{-1/2}$, because $k(g)$
+is unbounded at both ends, leaving a 7 % transmission error at 16 points for a width-2
+lognormal. Integrating instead in the variable where the density is standard fixes it:
+
+| 16 g-points, width 2 | transmission error |
+|---|---|
+| equal-probability midpoint | 6.6 × 10⁻² |
+| Gauss–Legendre in $g$ | 2.1 × 10⁻² |
+| **Gauss–Hermite in $\log k$** | **2.9 × 10⁻⁴** |
+
+So the lognormal shape uses Gauss–Hermite. Width 0 collapses to exactly one sub-band, so a
+grey band is the one-point case and every existing configuration is bit-identical. An
+`exponential` shape is also available: that is the Goody random band model, whose transmission
+has the closed form $1/(1+ku)$, and the quadrature is verified against it.
+
+The k-distribution applies to the absorbing band only. The continuum stays grey deliberately —
+smoothness between the lines is what makes it a continuum.
+
+Admitting line structure lets more longwave out at fixed temperature and cools the equilibrium
+surface: the same gas does less greenhouse work once its structure is honest.
+
 One clean identity is genuinely lost. Under a flat fraction the instantaneous forcing scaled
 as exactly $(1-f)$, because $f$ factored out of every source term. It no longer does. It is
 tempting to assume the suppression must then be bracketed by $(1-f)$ at the profile's
@@ -190,6 +231,9 @@ against results derived independently of the code:
 | Fractional Planck function | 8–13 µm holds 31.05 % at 287 K, 19.98 % at 217 K | within 0.002 |
 | Zero continuum | window band must stay exactly transparent | bit-identical |
 | Continuum vapour scaling | doubling vapour multiplies it by $f\cdot2+(1-f)\cdot4$ | exact to 10⁻⁶ |
+| Goody band model | k-quadrature must reproduce $T = 1/(1+ku)$ | within 0.01 |
+| k-distribution mean | weights sum to 1, weighted mean $k$ is the band mean | exact to 10⁻¹² |
+| Thin limit under structure | absorption → band-mean $\tau$ whatever the spread | relative 10⁻⁶ |
 | Grey radiative equilibrium | $\sigma T_s^4 = F_0\left(1 + \tau/2\right)$ | within 0.05 K for $\tau = 0.5, 1.8, 4$ |
 | Thin-layer limit | $2\left(1-e^{-\tau}\right)\sigma T^4 \to 4\varepsilon'\sigma T^4\mathrm{d}z$ only at $D = 2$ | ratio 1.000 at $D{=}2$, 0.830 at $D{=}1.66$ |
 | Isothermal subdivision | slicing one isothermal slab must not change any flux | bit-identical for $n = 1 \ldots 256$ |
@@ -414,6 +458,9 @@ that drawing path verifiable and gives documentation shots a way to include it.
 --window-to-um X           transparent window, long edge, um      (none)
 --continuum-tau X          water-vapour continuum in the window   (0)
 --continuum-foreign X      foreign share of the continuum         (0.5)
+--k-distribution SHAPE     grey | lognormal | exponential         (grey)
+--k-width X                spread of k within the band; 0 = grey  (0)
+--k-points N               g-points across the band               (16)
 --pressure-broadening N    dry absorber ~ rho (p/p0)^N            (0)
 --ozone-fraction X         share of atm. solar into ozone layer   (0)
 --ozone-altitude-km X      Chapman layer peak altitude            (25)
@@ -519,12 +566,15 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
   transparent one; that is still nothing like a real absorption spectrum. It is why the raw
   doubling forcing is an order of magnitude too large, and why the CO₂ runs above have to
   be calibrated against a known forcing rather than predicting one. The window's *share* now
-  follows the Planck function and the window can close via the continuum, but within each of
-  the two bands line structure is ignored entirely; a k-distribution is what a rigorous
-  treatment would need.
+  follows the Planck function, the window can close via the continuum, and the absorbing band
+  can carry line structure — but it is still two bands, and the k-distribution's shape and
+  width are prescribed rather than derived from line data.
 - **The continuum's strength is tuned, not derived.** Its two scalings are physical, but the
   magnitude is one free parameter rather than fitted MT_CKD coefficients, and it is applied
   only inside the window rather than across the spectrum.
+- **The k-distribution is not correlated across levels from real data.** Correlated-k assumes
+  the ordering of $k$ holds at every pressure and temperature; here that is assumed rather than
+  checked against line-by-line calculations, and the same distribution is used at every level.
 - **The diffusivity is band-independent.** $D = 2$ is exact in the optically *thin* limit,
   which makes it the worst choice for opaque band centres. One $D$ cannot be right for bands
   spanning $\tau \ll 1$ to $\tau \gg 1$; the exact $2E_3(\tau)$ transmission would be needed.

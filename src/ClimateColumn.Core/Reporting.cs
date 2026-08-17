@@ -105,6 +105,14 @@ public static class Reporting
                 sb.AppendLine("    ... continuum          :       none  (the window never closes)");
             }
         }
+        if (o.KDistributionShape != KDistributionShape.Grey && o.KDistributionWidth > 0)
+        {
+            var k = o.BuildKDistribution();
+            sb.AppendLine($"  band structure            : {o.KDistributionShape}, width {o.KDistributionWidth:F2}, " +
+                          $"{k.Points} g-points");
+            sb.AppendLine($"    ... k spread            : {k.Multipliers[0]:E2} to {k.Multipliers[^1]:E2} " +
+                          $"x the band mean");
+        }
         if (o.PressureBroadeningExponent > 0)
             sb.AppendLine($"  pressure broadening       : eps' ~ rho (p/p0)^{o.PressureBroadeningExponent:F2}");
         if (o.OzoneFraction > 0)

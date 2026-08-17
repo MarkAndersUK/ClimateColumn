@@ -241,6 +241,8 @@ public static class Program
             WindowLongWavelength = GetMicrons(args, "window-to-um", 0.0),
             WindowContinuumOpticalDepth = GetDouble(args, "continuum-tau", 0.0),
             ContinuumForeignFraction = GetDouble(args, "continuum-foreign", 0.5),
+            KDistributionWidth = GetDouble(args, "k-width", 0.0),
+            KDistributionPoints = (int)GetDouble(args, "k-points", 16),
             PressureBroadeningExponent = GetDouble(args, "pressure-broadening", 0.0),
             OzoneFraction = GetDouble(args, "ozone-fraction", 0.0),
             OzoneLayerAltitude = GetDouble(args, "ozone-altitude-km", 25.0) * 1000.0,
@@ -262,6 +264,23 @@ public static class Program
                 "full" or "adjust" => ConvectionMode.Full,
                 _ => throw new ArgumentException($"unknown convection mode '{conv}'")
             };
+        }
+
+        if (args.TryGetValue("k-distribution", out var kd))
+        {
+            o.KDistributionShape = kd.ToLowerInvariant() switch
+            {
+                "grey" or "gray" or "none" => KDistributionShape.Grey,
+                "lognormal" => KDistributionShape.Lognormal,
+                "exponential" or "goody" => KDistributionShape.Exponential,
+                _ => throw new ArgumentException($"unknown k-distribution '{kd}'")
+            };
+        }
+        else if (o.KDistributionWidth > 0)
+        {
+            // A width on its own is a clear request for line structure; lognormal is the shape
+            // that collapses back onto grey as the width goes to zero.
+            o.KDistributionShape = KDistributionShape.Lognormal;
         }
 
         if (args.ContainsKey("isothermal")) o.InitialiseFromStandardAtmosphere = false;
@@ -324,6 +343,9 @@ public static class Program
           --window-to-um X           transparent window, long edge, um      (none)
           --continuum-tau X          water-vapour continuum in the window   (0)
           --continuum-foreign X      foreign share of the continuum         (0.5)
+          --k-distribution SHAPE     grey | lognormal | exponential         (grey)
+          --k-width X                spread of k within the band; 0 = grey  (0)
+          --k-points N               g-points across the band               (16)
           --pressure-broadening N    dry absorber ~ rho (p/p0)^N            (0)
           --ozone-fraction X         share of atm. solar into ozone layer   (0)
           --ozone-altitude-km X      Chapman layer peak altitude            (25)
