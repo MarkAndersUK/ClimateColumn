@@ -105,11 +105,17 @@ public sealed class Column
     /// solver are power per unit <em>surface</em> area; dividing the outgoing longwave by this
     /// gives the actual radiant flux crossing the top of the atmosphere.
     /// </summary>
-    public double TopGeometricFactor
+    public double TopGeometricFactor =>
+        Options.SphericalGeometry ? TopRadiusRatioSquared : 1.0;
+
+    /// <summary>
+    /// (r_top / r_0)^2 regardless of which geometric options are set - the ratio of the
+    /// top-of-atmosphere disc's area to the solid planet's. About 1.0158 for 50 km on Earth.
+    /// </summary>
+    public double TopRadiusRatioSquared
     {
         get
         {
-            if (!Options.SphericalGeometry) return 1.0;
             double ratio = (Options.PlanetRadius + Options.TopAltitude) / Options.PlanetRadius;
             return ratio * ratio;
         }
@@ -384,6 +390,138 @@ public sealed class Column
         }
 
         SurfaceShortwaveAbsorbed = absorbed - inAtmosphere;
+        LimbShortwaveAbsorbed = AddLimbAbsorption(chapmanColumn);
+    }
+
+    /// <summary>
+    /// Solar flux absorbed from rays that miss the solid planet but pass through its atmosphere,
+    /// W m^-2 of planet surface. Zero unless
+    /// <see cref="ModelOptions.TopOfAtmosphereInterception"/> is set.
+    /// </summary>
+    public double LimbShortwaveAbsorbed { get; private set; }
+
+    /// <summary>
+    /// Total solar flux the planet absorbs per unit surface area: the disc term the options
+    /// describe, plus whatever the limb annulus captures. This, not
+    /// <see cref="ModelOptions.AbsorbedSolarFlux"/>, is what the outgoing longwave has to
+    /// balance at equilibrium.
+    /// </summary>
+    public double TotalShortwaveAbsorbed =>
+        Options.AbsorbedSolarFlux + LimbShortwaveAbsorbed;
+
+    /// <summary>
+    /// Absorption of the sunlight that passes through the atmosphere without striking the
+    /// ground - the annulus of impact parameters between r_0 and r_0 + H.
+    /// </summary>
+    /// <remarks>
+    /// For each impact parameter b the ray descends to a tangent point at radius b and climbs
+    /// back out, crossing every shell above b twice. The path length through shell i on one leg
+    /// is <c>sqrt(r_t^2 - b^2) - sqrt(max(r_b, b)^2 - b^2)</c>, and the beam is walked in order
+    /// so that absorption is attenuated by everything already traversed. The annulus is then
+    /// integrated with the area weight <c>2 pi b db</c>, divided by the planet's surface area
+    /// so the result is a flux per unit surface area like everything else in the model.
+    ///
+    /// Two choices are worth naming rather than burying.
+    ///
+    /// <strong>The extinction coefficient is inferred, not given.</strong> The model's shortwave
+    /// is a prescribed deposition profile, not a radiative transfer calculation, so there is no
+    /// coefficient to reuse. One is constructed by asking what vertical optical depth would
+    /// produce the prescribed absorption, <c>tau = -ln(1 - f)</c>, and distributing it with the
+    /// same mass-and-Chapman shape the deposition already uses. That makes the limb path
+    /// consistent with the vertical one by construction, but it is a construction: a different
+    /// reading of f - the disc-averaged slant absorption rather than the vertical - would give a
+    /// larger tau and rather more limb absorption.
+    ///
+    /// <strong>No albedo is applied.</strong> A limb ray never reaches the surface, and the
+    /// model has no scattering, so the planetary albedo - which is a prescribed reflection of the
+    /// disc - has nothing to act through here. This makes the limb term an upper bound relative
+    /// to treating it as equally reflective.
+    /// </remarks>
+    private double AddLimbAbsorption(double chapmanColumn)
+    {
+        if (!Options.TopOfAtmosphereInterception) return 0.0;
+
+        int n = Count;
+        double f = Options.AtmosphericShortwaveFraction;
+
+        // A longwave-only atmosphere is transparent to sunlight on every path, limb included.
+        if (n == 0 || f <= 0.0) return 0.0;
+
+        double r0 = Options.PlanetRadius;
+        double rTop = r0 + Options.TopAltitude;
+        if (rTop <= r0) return 0.0;
+
+        // The vertical optical depth that reproduces the prescribed absorption, spread with the
+        // deposition's own vertical shape.
+        double tauVertical = f >= 1.0 ? 50.0 : -Math.Log(1.0 - f);
+        var kappa = new double[n];
+        var bottom = new double[n];
+        var top = new double[n];
+
+        for (int i = 0; i < n; i++)
+        {
+            var s = Segments[i];
+            double weight = (1.0 - Options.OzoneFraction) *
+                            (MassPerArea > 0.0 ? s.MassPerArea / MassPerArea : 0.0);
+            if (chapmanColumn > 0.0)
+            {
+                weight += Options.OzoneFraction * ChapmanWeight(s) * s.Thickness / chapmanColumn;
+            }
+
+            kappa[i] = s.Thickness > 0.0 ? tauVertical * weight / s.Thickness : 0.0;
+            bottom[i] = r0 + s.BottomAltitude;
+            top[i] = r0 + s.TopAltitude;
+        }
+
+        int points = Math.Max(1, Options.LimbQuadraturePoints);
+        double db = (rTop - r0) / points;
+
+        var deposit = new double[n];
+        var alongPath = new double[n];
+        double captured = 0.0;
+
+        for (int q = 0; q < points; q++)
+        {
+            double b = r0 + (q + 0.5) * db;
+
+            // The lowest shell the ray actually enters: the tangent point sits inside it.
+            int lowest = 0;
+            while (lowest < n && top[lowest] <= b) lowest++;
+            if (lowest >= n) continue;
+
+            Array.Clear(alongPath);
+            double transmission = 1.0;
+
+            // Descending to the tangent point, then climbing back out. Each leg crosses the
+            // same shells, so the ray sees every shell above b exactly twice.
+            for (int leg = 0; leg < 2; leg++)
+            {
+                for (int step = 0; step < n - lowest; step++)
+                {
+                    int i = leg == 0 ? n - 1 - step : lowest + step;
+
+                    double lower = Math.Max(bottom[i], b);
+                    double ds = Math.Sqrt(top[i] * top[i] - b * b) -
+                                Math.Sqrt(lower * lower - b * b);
+                    if (ds <= 0.0) continue;
+
+                    double absorbedHere = transmission * (1.0 - Math.Exp(-kappa[i] * ds));
+                    alongPath[i] += absorbedHere;
+                    transmission -= absorbedHere;
+                }
+            }
+
+            // Power intercepted in this annulus per unit of the planet's surface area:
+            // S0 * 2 pi b db / (4 pi r0^2).
+            double intercepted = Options.SolarConstant * b * db / (2.0 * r0 * r0);
+
+            captured += intercepted * (1.0 - transmission);
+            for (int i = 0; i < n; i++) deposit[i] += intercepted * alongPath[i];
+        }
+
+        for (int i = 0; i < n; i++) Segments[i].ShortwaveAbsorbed += deposit[i];
+
+        return captured;
     }
 
     /// <summary>Total hemispheric optical depth of the column.</summary>

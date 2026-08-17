@@ -185,7 +185,7 @@ public sealed class ColumnModel
                              - sensible
                              - latent;
 
-            toaImbalance = Options.AbsorbedSolarFlux - rad.OutgoingLongwave;
+            toaImbalance = Column.TotalShortwaveAbsorbed - rad.OutgoingLongwave;
 
             // Adaptive time step. Two constraints: no level may move more than
             // MaxTemperatureStep in one step, and the step must stay inside the explicit
@@ -269,7 +269,7 @@ public sealed class ColumnModel
         double emissionFlux = RadiationSolver.StefanBoltzmannFlux(Column.SurfaceTemperature, eps);
         surfaceImbalance = Column.SurfaceShortwaveAbsorbed + eps * rad.SurfaceDownwardFlux
                            - emissionFlux - sensible - latent;
-        toaImbalance = Options.AbsorbedSolarFlux - rad.OutgoingLongwave;
+        toaImbalance = Column.TotalShortwaveAbsorbed - rad.OutgoingLongwave;
 
         double netLongwaveLoss = emissionFlux - eps * rad.SurfaceDownwardFlux;
         double airTemperature = ConvectionSolver.NearSurfaceAirTemperature(Column);

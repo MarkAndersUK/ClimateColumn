@@ -165,6 +165,14 @@ public static class Reporting
         sb.AppendLine();
         sb.AppendLine("Energy budget at equilibrium");
         sb.AppendLine($"  absorbed solar            : {o.AbsorbedSolarFlux,10:F3} W/m2");
+        if (result.Column.LimbShortwaveAbsorbed != 0.0)
+        {
+            double annulus = o.SolarConstant * 0.25 *
+                             (result.Column.TopRadiusRatioSquared - 1.0);
+            sb.AppendLine($"    ... limb (misses ground): {result.Column.LimbShortwaveAbsorbed,10:F3} W/m2  " +
+                          $"({100.0 * result.Column.LimbShortwaveAbsorbed / annulus:F1}% of the {annulus:F3} intercepted)");
+            sb.AppendLine($"    ... total absorbed      : {result.Column.TotalShortwaveAbsorbed,10:F3} W/m2");
+        }
         sb.AppendLine($"    ... at the surface      : {result.Column.SurfaceShortwaveAbsorbed,10:F3} W/m2");
         sb.AppendLine($"    ... in the atmosphere   : {o.AbsorbedSolarFlux - result.Column.SurfaceShortwaveAbsorbed,10:F3} W/m2");
         sb.AppendLine($"  outgoing longwave (TOA)   : {r.OutgoingLongwave,10:F3} W/m2");

@@ -347,8 +347,41 @@ public sealed class ModelOptions
     public bool VariableGravity { get; set; } = false;
 
     /// <summary>
-    /// Planet radius used by <see cref="SphericalGeometry"/> and
-    /// <see cref="VariableGravity"/>, m.
+    /// Intercept sunlight on the top-of-atmosphere disc of radius r_0 + H rather than on the
+    /// solid planet's disc of radius r_0.
+    /// </summary>
+    /// <remarks>
+    /// The extra light is <em>limb</em> light: rays whose impact parameter lies between r_0 and
+    /// r_0 + H graze through the atmosphere and out the other side without ever reaching the
+    /// ground. So this is not the 1.6% rescaling of the absorbed solar that the area ratio
+    /// suggests. Scaling <see cref="AbsorbedSolarFlux"/> would be wrong twice over: it would put
+    /// the extra energy through the surface albedo, and it would deliver most of it to the
+    /// surface, which no limb ray touches.
+    ///
+    /// What is added instead is a genuine slant-path calculation over impact parameter - see
+    /// Column.DistributeShortwave. Two consequences: only part of the annulus is absorbed at all
+    /// (a ray grazing at 40 km sees almost no air), and what is absorbed lands high up rather
+    /// than at the surface.
+    ///
+    /// Off by default, like the other geometric refinements.
+    /// </remarks>
+    public bool TopOfAtmosphereInterception { get; set; } = false;
+
+    /// <summary>
+    /// Number of impact parameters used for the limb integral when
+    /// <see cref="TopOfAtmosphereInterception"/> is set.
+    /// </summary>
+    /// <remarks>
+    /// The absorbed fraction falls off roughly exponentially with tangent height, over a scale
+    /// height of a few kilometres, so the integrand needs real resolution across the annulus.
+    /// 400 points over 50 km is 125 m, well inside that; the suite checks the result is
+    /// converged by halving and doubling it.
+    /// </remarks>
+    public int LimbQuadraturePoints { get; set; } = 400;
+
+    /// <summary>
+    /// Planet radius used by <see cref="SphericalGeometry"/>,
+    /// <see cref="VariableGravity"/> and <see cref="TopOfAtmosphereInterception"/>, m.
     /// </summary>
     public double PlanetRadius { get; set; } = PhysicalConstants.EarthRadius;
 

@@ -262,6 +262,65 @@ One thing the relaxation does **not** reach: the dry adiabat $g/c_p$ falls from 
 9.609 K km⁻¹, but the convective adjustment runs on the prescribed critical lapse rate of
 6.5 K km⁻¹, not on $g/c_p$, so convection does not see it.
 
+### The top-of-atmosphere solar cross-section
+
+The planet intercepts sunlight on a disc. `--toa-interception` makes that disc the top of the
+atmosphere, radius $r_0 + H$, rather than the solid planet, radius $r_0$ — 1.58 % more area, so
+5.362 W m⁻² more intercepted power per unit surface area.
+
+**The obvious implementation is wrong, and wrong twice.** Multiplying `AbsorbedSolarFlux` by
+$(r_\text{top}/r_0)^2$ adds 3.753 W m⁻², puts it through the surface albedo, and delivers 78 % of
+it to the ground. But the extra light is **limb light**: rays with impact parameter between $r_0$
+and $r_\text{top}$ graze through the atmosphere and out the other side. They never touch the
+surface, so the surface albedo has nothing to act through and the ground gets none of it — and
+only part of the annulus is absorbed at all, because a ray grazing at 40 km passes through almost
+no air.
+
+So what is added is a slant-path integral over impact parameter. For each $b$ the ray descends to
+a tangent point at radius $b$ and climbs back out, crossing every shell above $b$ twice, with
+path length through shell $i$ on one leg
+
+$$
+\Delta s_i(b) = \sqrt{r_{t,i}^2 - b^2} - \sqrt{\max(r_{b,i},\,b)^2 - b^2}
+$$
+
+The beam is walked in order so absorption is attenuated by everything already traversed, and the
+annulus is integrated with the area weight $2\pi b\,\mathrm{d}b$ over the planet's surface area
+$4\pi r_0^2$. Two choices worth naming rather than burying:
+
+- **The extinction coefficient is inferred, not given.** The model's shortwave is a prescribed
+  deposition profile, not a radiative transfer calculation, so there is no coefficient to reuse.
+  One is constructed by asking what vertical optical depth reproduces the prescribed absorption,
+  $\tau = -\ln(1-f)$, distributed with the same mass-and-Chapman shape the deposition uses. That
+  makes the limb path consistent with the vertical one *by construction* — but reading $f$ as a
+  disc-averaged slant absorption instead would give a larger $\tau$ and more limb capture.
+- **No albedo is applied**, since a limb ray never reaches the surface and the model has no
+  scattering. This makes the limb term an upper bound relative to treating it as equally
+  reflective.
+
+**What it does.** Of the 5.362 W m⁻² intercepted, **2.563 W m⁻² is absorbed (47.8 %)** — a third
+less than the naive rescaling — and it lands **high**, centred at 19.2 km with its peak at
+14.7 km, against the vertical beam's 7.3 km centroid. The surface warms **+0.309 K**, an order of
+magnitude more than sphericity or gravity, because this one changes *how much energy the planet
+absorbs* rather than redistributing what it already had.
+
+Because the total absorbed is no longer a property of the options alone, `Column.TotalShortwaveAbsorbed`
+is what the outgoing longwave balances at equilibrium, and the suite checks that everything
+deposited in the segments and the surface sums to exactly that.
+
+### The three geometric corrections together
+
+| configuration | $T_s$ (K) | shift |
+|---|---:|---:|
+| plane-parallel, constant $g$, planet disc (default) | 286.797 | — |
+| `--variable-gravity` | 286.809 | +0.012 K |
+| `--spherical` | 286.781 | −0.016 K |
+| `--toa-interception` | 287.106 | **+0.309 K** |
+| all three | ~287.10 | **+0.31 K** |
+
+The two that redistribute energy nearly cancel; the one that changes the energy input dominates by
+an order of magnitude. All three are off by default.
+
 ### Beyond the grey column
 
 Four optional pieces of physics, all off by default, so the baseline above is unchanged
@@ -897,7 +956,8 @@ that drawing path verifiable and gives documentation shots a way to include it.
 --humidity X               near-surface relative humidity, 0-1    (0.8)
 --spherical                spherical shells, not plane-parallel   (off)
 --variable-gravity         g falls as 1/r^2; geopotential grid    (off)
---planet-radius-km X       radius for the two above               (6371)
+--toa-interception         intercept sunlight on the TOA disc     (off)
+--planet-radius-km X       radius for the three above             (6371)
 --lapse-rate X             critical lapse rate, K/km              (6.5)
 --surface-heat-capacity X  J/m2/K                                 (4.18e7)
 --max-steps N              iteration cap                          (500000)
@@ -1065,9 +1125,11 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
   assumption rather than a result.
 - **Sphericity and variable gravity are off by default, and partial when on.** `--spherical`
   adds the shell-area and $-(2/r)F$ terms; `--variable-gravity` adds the inverse-square law and
-  the geopotential grid. What still does not follow: the solar interception uses the surface
-  cross-section $\pi r_0^2$ rather than the top-of-atmosphere $\pi r_\text{top}^2$; the shell
-  factor is held constant across each segment rather than integrated within it; the dry adiabat's
+  the geopotential grid; `--toa-interception` adds the limb annulus. What still does not follow:
+  the limb calculation's shortwave extinction is inferred from the prescribed absorption rather
+  than given, and reading that absorption as slant rather than vertical would raise the limb
+  capture; the shell factor is held constant across each segment rather than integrated within it;
+  the dry adiabat's
   1.55 % relaxation does not reach the convection scheme, which runs on a prescribed critical
   lapse rate; and the exterior field is used throughout, ignoring the air mass below a given
   level, which by the shell theorem would add to the enclosed mass. Horizontal transport is
