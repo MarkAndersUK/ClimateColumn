@@ -247,6 +247,47 @@ convergence (20 → 320 segments span less than 0.1 K), renormalisation of the a
 pressure broadening, conservation of solar flux under the ozone redistribution, and
 rejection of every configuration that has no equilibrium.
 
+### Checked against a resolved spectrum
+
+Everything above is a *consistency* check — closed forms the solver should satisfy, budgets that
+should balance — and consistency cannot tell you whether a band approximation is any good.
+`LineByLineBand` resolves an explicit line list on a 60,000-point wavenumber grid with no band
+approximation anywhere, and `LineByLineTests` compares against it.
+
+The line list is **synthetic** — 90 Lorentz lines with exponentially distributed strengths, from
+a documented rule with a fixed seed, not from HITRAN. So this validates the *method* against
+exact spectral integration; it does not validate the model against Earth's spectrum, which would
+need real line data.
+
+Transmission through a homogeneous path, at band-mean optical depth τ:
+
+| τ | line-by-line | grey | grey error | 16 g-points | 32 g-points |
+|---|---|---|---|---|---|
+| 0.3 | 0.835 | 0.741 | 0.094 | 0.0037 | 0.0010 |
+| 1.0 | 0.688 | 0.368 | **0.320** | 0.0016 | 0.0004 |
+| 3.0 | 0.511 | 0.050 | **0.461** | 0.0012 | 0.0003 |
+| 10 | 0.287 | 0.00005 | 0.287 | 0.0008 | 0.0002 |
+
+A grey band is not slightly wrong, it is wrong by half the dynamic range — at τ = 3 it transmits
+5 % where the resolved spectrum transmits 51 %. Sixteen g-points get within 0.002.
+
+The more interesting result is that the reference **separates two error sources that were
+otherwise indistinguishable**. Through three layers spanning a threefold pressure range:
+
+| | transmission | error |
+|---|---|---|
+| line-by-line | 0.717633 | — |
+| correlated-k, 8 g-points | 0.709100 | 8.5 × 10⁻³ |
+| correlated-k, 64 g-points | 0.716690 | 9.4 × 10⁻⁴ |
+| correlated-k, 256 g-points | 0.716792 | 8.4 × 10⁻⁴ |
+| grey, same absorber | 0.367879 | 3.5 × 10⁻¹ |
+
+Quadrature error falls with g-points; the correlation error does not. Past about 64 points the
+remainder is the correlated-k assumption itself, flooring near **8 × 10⁻⁴** — four hundred times
+smaller than ignoring the structure, and a useful thing to know because it says when adding
+g-points has stopped buying anything. That the same calculation at a single pressure throughout
+agrees to 6 × 10⁻⁶ confirms the floor is the assumption and not a bug.
+
 The suite is organised by what it constrains — `AnalyticBenchmarkTests` and
 `SolverConsistencyTests` hold the assertions above, `ExtendedPhysicsTests` and `Co2Tests`
 the optional physics, `FullModelTests` the end-to-end budgets. Equilibrium runs are the
@@ -514,6 +555,8 @@ src/ClimateColumn.Core/
   ColumnModel.cs         adaptive explicit march to equilibrium
   GridConvergence.cs     refinement study with Richardson extrapolation
   Co2Sweep.cs            concentration sweep and instantaneous forcing
+  KDistribution.cs       correlated-k quadrature over a band
+  LineByLine.cs          resolved-spectrum reference for checking the band approximations
   Reporting.cs           console tables and CSV
 src/ClimateColumn.Cli/   command-line driver
 src/ClimateColumn.Charts/  WinForms chart viewer and PNG export
@@ -572,9 +615,10 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 - **The continuum's strength is tuned, not derived.** Its two scalings are physical, but the
   magnitude is one free parameter rather than fitted MT_CKD coefficients, and it is applied
   only inside the window rather than across the spectrum.
-- **The k-distribution is not correlated across levels from real data.** Correlated-k assumes
-  the ordering of $k$ holds at every pressure and temperature; here that is assumed rather than
-  checked against line-by-line calculations, and the same distribution is used at every level.
+- **Nothing is checked against *real* line data.** The line-by-line reference above validates
+  the band machinery against exact spectral integration, but from a synthetic line list. Whether
+  the model's absorption resembles Earth's needs HITRAN, and that comparison has not been made —
+  so the k-distribution's shape and width remain prescribed rather than fitted to a real gas.
 - **The diffusivity is band-independent.** $D = 2$ is exact in the optically *thin* limit,
   which makes it the worst choice for opaque band centres. One $D$ cannot be right for bands
   spanning $\tau \ll 1$ to $\tau \gg 1$; the exact $2E_3(\tau)$ transmission would be needed.

@@ -1,0 +1,330 @@
+namespace ClimateColumn.Core;
+
+/// <summary>One spectral line: where it sits, how strong it is, and how broad.</summary>
+/// <param name="Wavenumber">Line centre, cm^-1.</param>
+/// <param name="Strength">Integrated line strength, in the arbitrary units of the band.</param>
+/// <param name="HalfWidth">Lorentz half-width at the reference pressure, cm^-1.</param>
+public readonly record struct SpectralLine(double Wavenumber, double Strength, double HalfWidth);
+
+/// <summary>
+/// A brute-force spectral reference: an explicit list of lines, resolved on a fine wavenumber
+/// grid, with no band approximation anywhere.
+/// </summary>
+/// <remarks>
+/// This exists to check the k-distribution against a first-principles calculation rather than
+/// against more of the model's own reasoning. Every other verification in this project is a
+/// consistency check - closed forms the solver should satisfy, budgets that should balance -
+/// and consistency cannot tell you whether a band approximation is any good. Only resolving
+/// the lines can.
+///
+/// A caveat that matters, stated plainly: <b>the line list is synthetic</b>. It is generated
+/// from a documented rule with a fixed seed, not read from HITRAN, so this validates the
+/// <i>method</i> against exact spectral integration - does reordering plus quadrature reproduce
+/// the true integral, and how much does the correlated-k assumption cost in an inhomogeneous
+/// column - and not the model against Earth's actual spectrum. Answering that second question
+/// needs real line data.
+///
+/// Everything is dimensionless by construction: absorption coefficients are normalised so the
+/// band mean is 1, and the absorber amount is then just the band-mean optical depth. That keeps
+/// the arithmetic about the shape of the distribution, which is what the band approximation
+/// actually turns on.
+/// </remarks>
+public sealed class LineByLineBand
+{
+    private readonly double[] _wavenumbers;
+    private readonly SpectralLine[] _lines;
+
+    private LineByLineBand(double[] wavenumbers, SpectralLine[] lines, double start, double end)
+    {
+        _wavenumbers = wavenumbers;
+        _lines = lines;
+        Start = start;
+        End = end;
+    }
+
+    /// <summary>Lower edge of the evaluated band, cm^-1.</summary>
+    public double Start { get; }
+
+    /// <summary>Upper edge of the evaluated band, cm^-1.</summary>
+    public double End { get; }
+
+    /// <summary>Number of wavenumber samples across the band.</summary>
+    public int Samples => _wavenumbers.Length;
+
+    /// <summary>The lines making up the band.</summary>
+    public IReadOnlyList<SpectralLine> Lines => _lines;
+
+    /// <summary>
+    /// Builds a synthetic band: <paramref name="lineCount"/> lines placed pseudo-randomly with
+    /// exponentially distributed strengths, resolved at <paramref name="samples"/> points.
+    /// </summary>
+    /// <remarks>
+    /// Exponential strengths are the Goody random band model's own assumption, which makes this
+    /// a fair test of a k-distribution built on that family. Lines are seeded from a fixed
+    /// linear congruential generator so a given configuration always produces the same band -
+    /// a reference that moved between runs would be no reference at all.
+    ///
+    /// Lines are also placed in a margin either side of the evaluated band, so that the wings
+    /// reaching in from outside are present. Without them the band edges would be
+    /// systematically too transparent, which is an artefact of the window rather than physics.
+    /// </remarks>
+    public static LineByLineBand Synthetic(
+        double start = 600.0, double end = 700.0, int lineCount = 60, int samples = 60_000,
+        double halfWidth = 0.08, uint seed = 20260817u)
+    {
+        if (end <= start) throw new ArgumentException("end must exceed start.");
+        if (lineCount < 1) throw new ArgumentException("lineCount must be >= 1.");
+        if (samples < 2) throw new ArgumentException("samples must be >= 2.");
+        if (halfWidth <= 0) throw new ArgumentException("halfWidth must be positive.");
+
+        // Populate a margin of strong wings either side of the evaluated interval.
+        double margin = 0.25 * (end - start);
+        double lineFrom = start - margin, lineTo = end + margin;
+
+        uint state = seed;
+        int totalLines = (int)Math.Round(lineCount * (lineTo - lineFrom) / (end - start));
+
+        var lines = new SpectralLine[totalLines];
+        for (int i = 0; i < totalLines; i++)
+        {
+            double position = lineFrom + NextDouble(ref state) * (lineTo - lineFrom);
+
+            // Exponentially distributed strength, mean 1, by inverse CDF.
+            double u = Math.Clamp(NextDouble(ref state), 1e-12, 1.0 - 1e-12);
+            double strength = -Math.Log(1.0 - u);
+
+            lines[i] = new SpectralLine(position, strength, halfWidth);
+        }
+
+        var grid = new double[samples];
+        double step = (end - start) / samples;
+        for (int i = 0; i < samples; i++) grid[i] = start + (i + 0.5) * step;
+
+        return new LineByLineBand(grid, lines, start, end);
+    }
+
+    /// <summary>
+    /// Absorption coefficient at every wavenumber sample, for a path at
+    /// <paramref name="pressureRatio"/> times the reference pressure, normalised so that the
+    /// band mean at the reference pressure is exactly 1.
+    /// </summary>
+    /// <remarks>
+    /// Lines are Lorentz-shaped with half-width proportional to pressure, which is the
+    /// collision broadening the model's own PressureBroadeningExponent gestures at. Because
+    /// the profile is normalised in area, broadening moves absorption from the cores into the
+    /// wings without changing the band mean - so a pressure change reshapes the distribution
+    /// while leaving the total absorber amount alone, which is exactly the case that tests
+    /// whether correlated-k holds.
+    /// </remarks>
+    public double[] AbsorptionCoefficients(double pressureRatio = 1.0)
+    {
+        if (pressureRatio <= 0) throw new ArgumentException("pressureRatio must be positive.");
+
+        var k = new double[_wavenumbers.Length];
+
+        for (int i = 0; i < _wavenumbers.Length; i++)
+        {
+            double nu = _wavenumbers[i];
+            double sum = 0.0;
+
+            foreach (var line in _lines)
+            {
+                double gamma = line.HalfWidth * pressureRatio;
+                double offset = nu - line.Wavenumber;
+                sum += line.Strength * gamma / (Math.PI * (offset * offset + gamma * gamma));
+            }
+
+            k[i] = sum;
+        }
+
+        // Normalise by the reference-pressure band mean so results are dimensionless. The
+        // reference mean is used at every pressure, since area-normalised broadening leaves it
+        // unchanged and rescaling per pressure would hide that.
+        double norm = BandMeanAtReference();
+        if (norm > 0)
+        {
+            for (int i = 0; i < k.Length; i++) k[i] /= norm;
+        }
+
+        return k;
+    }
+
+    private double? _referenceMean;
+
+    private double BandMeanAtReference()
+    {
+        if (_referenceMean is double cached) return cached;
+
+        double sum = 0.0;
+        for (int i = 0; i < _wavenumbers.Length; i++)
+        {
+            double nu = _wavenumbers[i];
+            foreach (var line in _lines)
+            {
+                double gamma = line.HalfWidth;
+                double offset = nu - line.Wavenumber;
+                sum += line.Strength * gamma / (Math.PI * (offset * offset + gamma * gamma));
+            }
+        }
+
+        double mean = sum / _wavenumbers.Length;
+        _referenceMean = mean;
+        return mean;
+    }
+
+    /// <summary>
+    /// Exact band transmission through a homogeneous path of band-mean optical depth
+    /// <paramref name="opticalDepth"/>: the spectral mean of exp(-k(nu) u), with no band
+    /// approximation.
+    /// </summary>
+    public double Transmission(double opticalDepth, double pressureRatio = 1.0)
+    {
+        var k = AbsorptionCoefficients(pressureRatio);
+
+        double sum = 0.0;
+        for (int i = 0; i < k.Length; i++) sum += Math.Exp(-k[i] * opticalDepth);
+        return sum / k.Length;
+    }
+
+    /// <summary>
+    /// Exact band transmission through a stack of layers, each with its own pressure and
+    /// band-mean optical depth. The spectral integral is done after summing optical depths at
+    /// each wavenumber, which is what makes this the reference an inhomogeneous correlated-k
+    /// calculation has to be judged against.
+    /// </summary>
+    public double Transmission(IReadOnlyList<(double PressureRatio, double OpticalDepth)> layers)
+    {
+        var total = new double[_wavenumbers.Length];
+
+        foreach (var (pressureRatio, opticalDepth) in layers)
+        {
+            var k = AbsorptionCoefficients(pressureRatio);
+            for (int i = 0; i < total.Length; i++) total[i] += k[i] * opticalDepth;
+        }
+
+        double sum = 0.0;
+        for (int i = 0; i < total.Length; i++) sum += Math.Exp(-total[i]);
+        return sum / total.Length;
+    }
+
+    /// <summary>
+    /// The band's own k-distribution, measured rather than assumed: sort the resolved
+    /// absorption coefficients, divide them into equal-weight groups, and take each group's
+    /// mean.
+    /// </summary>
+    /// <remarks>
+    /// Averaging within each g-interval rather than sampling a point inside it preserves the
+    /// band mean automatically, so the quadrature holds exactly as much absorber as the
+    /// spectrum did.
+    /// </remarks>
+    public KDistribution ToKDistribution(int points, double pressureRatio = 1.0)
+    {
+        if (points < 1) throw new ArgumentException("points must be >= 1.");
+
+        var k = AbsorptionCoefficients(pressureRatio);
+        Array.Sort(k);
+
+        return GroupIntoQuadrature(new[] { k }, points).Single();
+    }
+
+    /// <summary>
+    /// A correlated-k quadrature over a stack of layers: order the spectrum once, by the
+    /// reference layer, and use that same ordering at every level.
+    /// </summary>
+    /// <remarks>
+    /// This is the assumption the name refers to, and the one worth measuring. Absorption is
+    /// only strictly reorderable for a homogeneous path; across layers whose line widths differ,
+    /// a given g no longer picks out the same wavenumbers, and the error that introduces is
+    /// what these quadratures let you quantify against
+    /// <see cref="Transmission(IReadOnlyList{ValueTuple{double, double}})"/>.
+    /// </remarks>
+    public IReadOnlyList<KDistribution> CorrelatedQuadrature(
+        int points, IReadOnlyList<double> pressureRatios, double orderingPressureRatio = 1.0)
+    {
+        var ordering = AbsorptionCoefficients(orderingPressureRatio);
+
+        // The permutation that sorts the reference layer, applied to every layer.
+        var order = new int[ordering.Length];
+        for (int i = 0; i < order.Length; i++) order[i] = i;
+        Array.Sort((double[])ordering.Clone(), order);
+
+        var reordered = new List<double[]>(pressureRatios.Count);
+        foreach (double pressureRatio in pressureRatios)
+        {
+            var k = AbsorptionCoefficients(pressureRatio);
+            var sorted = new double[k.Length];
+            for (int i = 0; i < k.Length; i++) sorted[i] = k[order[i]];
+            reordered.Add(sorted);
+        }
+
+        return GroupIntoQuadrature(reordered, points);
+    }
+
+    /// <summary>
+    /// Collapses already-ordered spectra into equal-weight g-point groups, averaging within
+    /// each. Every input shares the same grouping, which is what keeps the sub-bands aligned
+    /// across layers.
+    /// </summary>
+    private static IReadOnlyList<KDistribution> GroupIntoQuadrature(
+        IReadOnlyList<double[]> ordered, int points)
+    {
+        int samples = ordered[0].Length;
+        var results = new List<KDistribution>(ordered.Count);
+
+        foreach (var spectrum in ordered)
+        {
+            var weights = new double[points];
+            var multipliers = new double[points];
+
+            for (int j = 0; j < points; j++)
+            {
+                int from = (int)((long)j * samples / points);
+                int to = (int)((long)(j + 1) * samples / points);
+                if (to <= from) to = Math.Min(from + 1, samples);
+
+                double sum = 0.0;
+                for (int i = from; i < to; i++) sum += spectrum[i];
+
+                weights[j] = (to - from) / (double)samples;
+                multipliers[j] = sum / (to - from);
+            }
+
+            results.Add(new KDistribution { Weights = weights, Multipliers = multipliers });
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Transmission through a stack using a correlated-k quadrature: optical depths are summed
+    /// per sub-band, then the sub-bands are combined.
+    /// </summary>
+    public static double CorrelatedTransmission(
+        IReadOnlyList<KDistribution> quadratures, IReadOnlyList<double> opticalDepths)
+    {
+        int points = quadratures[0].Points;
+        double sum = 0.0;
+
+        for (int j = 0; j < points; j++)
+        {
+            double tau = 0.0;
+            for (int l = 0; l < quadratures.Count; l++)
+            {
+                tau += quadratures[l].Multipliers[j] * opticalDepths[l];
+            }
+            sum += quadratures[0].Weights[j] * Math.Exp(-tau);
+        }
+
+        return sum;
+    }
+
+    /// <summary>
+    /// Deterministic uniform in [0, 1) from a linear congruential generator, so that a given
+    /// seed always rebuilds the same band.
+    /// </summary>
+    private static double NextDouble(ref uint state)
+    {
+        state = unchecked(state * 1664525u + 1013904223u);
+        return state / 4294967296.0;
+    }
+}
