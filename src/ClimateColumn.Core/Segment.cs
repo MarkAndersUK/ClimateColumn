@@ -35,8 +35,30 @@ public sealed class Segment
     /// <summary>Layer-mean air density, kg m^-3.</summary>
     public double Density => MassPerArea / Thickness;
 
-    /// <summary>Heat capacity per unit horizontal area, J m^-2 K^-1.</summary>
-    public double HeatCapacity => PhysicalConstants.DryAirSpecificHeat * MassPerArea;
+    /// <summary>
+    /// Ratio of this shell's volume to the slab of the same thickness standing on the planet's
+    /// surface: the volume mean of (r/r_0)^2 across the layer. Exactly 1 in plane-parallel
+    /// geometry, and about 1.016 at 50 km on Earth.
+    /// </summary>
+    /// <remarks>
+    /// Computed as the exact shell volume rather than (r_mid/r_0)^2, so that the segment holds
+    /// exactly the mass a spherical shell holds and emits exactly the power one emits:
+    /// <c>(r_t^3 - r_b^3) / (3 r_0^2 dz)</c>.
+    ///
+    /// <see cref="MassPerArea"/> is deliberately <em>not</em> scaled by this. That quantity is
+    /// the radial column density, and optical depth is a path integral along a radial ray -
+    /// a shell being wider does not make it more opaque from below. Keeping the two separate is
+    /// what stops sphericity leaking into the absorption coefficients.
+    /// </remarks>
+    public double ShellVolumeFactor { get; init; } = 1.0;
+
+    /// <summary>
+    /// Heat capacity per unit <em>surface</em> area, J m^-2 K^-1 - the whole shell's heat
+    /// capacity divided by the area of the planet beneath it, so that every flux in the model
+    /// remains power per unit surface area.
+    /// </summary>
+    public double HeatCapacity =>
+        PhysicalConstants.DryAirSpecificHeat * MassPerArea * ShellVolumeFactor;
 
     /// <summary>
     /// Volumetric emission coefficient eps' in the Koenigsberger equation
@@ -93,5 +115,5 @@ public sealed class Segment
     /// </summary>
     public double KoenigsbergerEmission =>
         4.0 * EmissionCoefficient * PhysicalConstants.StefanBoltzmann *
-        Math.Pow(Temperature, 4) * Thickness;
+        Math.Pow(Temperature, 4) * Thickness * ShellVolumeFactor;
 }

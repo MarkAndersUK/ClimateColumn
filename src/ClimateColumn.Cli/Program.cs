@@ -286,6 +286,9 @@ public static class Program
         }
 
         if (args.ContainsKey("isothermal")) o.InitialiseFromStandardAtmosphere = false;
+        if (args.ContainsKey("spherical")) o.SphericalGeometry = true;
+        if (args.ContainsKey("planet-radius-km"))
+            o.PlanetRadius = GetDouble(args, "planet-radius-km", 6371.0) * 1000.0;
 
         return o;
     }
@@ -362,6 +365,8 @@ public static class Program
           --lapse-rate X             critical lapse rate, K/km              (6.5)
           --surface-heat-capacity X  J/m2/K                                 (4.18e7)
           --max-steps N              iteration cap                          (500000)
+          --spherical                spherical shells, not plane-parallel   (off)
+          --planet-radius-km X       radius used by --spherical             (6371)
           --isothermal               start isothermal instead of US Std Atm
           --csv PATH                 write the profile to a CSV file
           --sensitivity F            also run with optical depth x F and report dT/dF

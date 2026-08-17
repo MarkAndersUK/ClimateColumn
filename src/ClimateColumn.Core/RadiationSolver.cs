@@ -202,8 +202,23 @@ public static class RadiationSolver
         double d = options.Diffusivity;
         var segments = column.Segments;
 
+        // The emitted power per unit *surface* area, which is what every flux in this model is.
+        // In plane-parallel geometry the shell factor is 1 and this is just sigma T^4.
+        //
+        // Sphericity enters here and nowhere else. Writing the spherical two-stream equations
+        //     dF+/dr = -D eps' (F+ - sigma T^4) - (2/r) F+
+        // in terms of G = (r/r_0)^2 F - the power crossing radius r, divided by the surface
+        // area beneath it - removes the geometric term entirely:
+        //     dG+/dr = -D eps' (G+ - (r/r_0)^2 sigma T^4)
+        // which is the plane-parallel equation with the source scaled by (r/r_0)^2. So the
+        // exponential recurrence below stays exact, the boundary conditions are untouched
+        // (G = F at the surface, and nothing enters the top in either variable), and every
+        // energy budget still closes in W per m^2 of planet surface.
         var blackbody = new double[n];
-        for (int i = 0; i < n; i++) blackbody[i] = segments[i].BlackbodyEmissivePower;
+        for (int i = 0; i < n; i++)
+        {
+            blackbody[i] = segments[i].BlackbodyEmissivePower * segments[i].ShellVolumeFactor;
+        }
 
         // Two bands: the absorbing band, and the window. Running both through the same
         // recurrence is what lets the window absorb and emit once it has a continuum, and it

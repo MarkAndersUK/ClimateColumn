@@ -69,6 +69,9 @@ public static class PhysicalConstants
     /// </summary>
     public const double VapourMixingRatio = DryAirGasConstant / WaterVapourGasConstant;
 
+    /// <summary>Earth's mean radius, m - the reference radius for spherical geometry.</summary>
+    public const double EarthRadius = 6.371e6;
+
     /// <summary>Seconds in a day.</summary>
     public const double SecondsPerDay = 86400.0;
 }

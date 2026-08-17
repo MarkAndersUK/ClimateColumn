@@ -81,6 +81,9 @@ public static class Reporting
         sb.AppendLine($"  solar constant / albedo   : {o.SolarConstant:F1} W/m2 / {o.Albedo:F3}");
         sb.AppendLine($"  surface emissivity        : {o.SurfaceEmissivity:F3}");
         sb.AppendLine($"  wind speed / h_c          : {o.WindSpeed:F2} m/s / {ConvectionSolver.SurfaceHeatTransferCoefficient(o.WindSpeed):F2} W/m2/K");
+        if (o.SphericalGeometry)
+            sb.AppendLine($"  geometry                  : spherical, r = {o.PlanetRadius / 1000.0:F0} km  " +
+                          $"(top shell area x{result.Column.TopGeometricFactor:F4})");
         if (o.SurfaceMoistureAvailability > 0.0)
             sb.AppendLine($"  moisture availability / RH: {o.SurfaceMoistureAvailability:F2} / {o.NearSurfaceRelativeHumidity:F2}");
 
@@ -161,6 +164,13 @@ public static class Reporting
         sb.AppendLine($"    ... at the surface      : {result.Column.SurfaceShortwaveAbsorbed,10:F3} W/m2");
         sb.AppendLine($"    ... in the atmosphere   : {o.AbsorbedSolarFlux - result.Column.SurfaceShortwaveAbsorbed,10:F3} W/m2");
         sb.AppendLine($"  outgoing longwave (TOA)   : {r.OutgoingLongwave,10:F3} W/m2");
+        if (o.SphericalGeometry)
+        {
+            // Reported fluxes are power per unit surface area, so that they balance the absorbed
+            // solar. The radiant flux actually crossing the top is that spread over the larger
+            // area up there.
+            sb.AppendLine($"    ... as flux at the top  : {r.OutgoingLongwave / result.Column.TopGeometricFactor,10:F3} W/m2");
+        }
         sb.AppendLine($"  surface emission          : {result.SurfaceEmission,10:F3} W/m2");
         sb.AppendLine($"  upward longwave at surface: {r.SurfaceUpwardFlux,10:F3} W/m2  (emission + reflection)");
         sb.AppendLine($"  surface downward longwave : {r.SurfaceDownwardFlux,10:F3} W/m2");

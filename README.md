@@ -146,6 +146,66 @@ sensible flux goes *negative*: evaporative cooling drops the surface below the a
 coupled to, which is what an over-tight surface–air coupling does when a second loss term
 is added to it.
 
+### Spherical geometry
+
+By default the column is plane-parallel: a stack of infinite slabs of constant cross-section,
+which is where every flux in W m⁻² comes from. `--spherical` treats it instead as a set of
+shells on a planet of radius $r_0$, where a shell at radius $r$ has $(r/r_0)^2$ times the area
+of the surface beneath it. Two consequences follow, and one non-consequence:
+
+- It holds that much more mass, so it has that much more heat capacity and emits that much
+  more power.
+- Radiation leaving it spreads over a growing area. In the flux divergence this is the
+  $-(2/r)F$ term:
+
+$$
+\frac{\mathrm{d}F^{+}}{\mathrm{d}r} = -D\varepsilon'\bigl(F^{+} - \sigma T^4\bigr) - \frac{2}{r}F^{+}
+$$
+
+- **Optical depths do not change.** They are path integrals along a radial ray, and a wider
+  shell is no more opaque from below.
+
+The implementation rests on one identity. Writing the equation above in terms of
+
+$$
+G^{\pm}(r) = \left(\frac{r}{r_0}\right)^{2} F^{\pm}(r)
+$$
+
+— the power crossing radius $r$ divided by the surface area beneath it — eliminates the
+geometric term entirely:
+
+$$
+\frac{\mathrm{d}G^{+}}{\mathrm{d}r} = -D\varepsilon'\left(G^{+} - \left(\frac{r}{r_0}\right)^{2}\sigma T^4\right)
+$$
+
+which is exactly the plane-parallel equation with its **source scaled by $(r/r_0)^2$**. So the
+exponential recurrence stays exact, the boundary conditions are untouched ($G = F$ at the
+surface, and nothing enters the top in either variable), and every energy budget still closes
+in W per m² of planet surface. Sphericity therefore enters the solver in one line — the
+emitted power — and nowhere else.
+
+Each segment's factor is the **exact shell volume**, $(r_t^3 - r_b^3)/(3r_0^2\,\mathrm{d}z)$,
+rather than $(r_\text{mid}/r_0)^2$, so a segment holds exactly the mass a shell holds and emits
+exactly the power one emits. The residual approximation is that the factor is held constant
+across a segment, second order in d$z$ and about $3\times10^{-4}$ relative for a 1 km segment.
+
+Because the reported fluxes are power per unit *surface* area, the outgoing longwave still
+balances the absorbed solar at 238.175 W m⁻²; the radiant flux actually crossing the top is
+that spread over 1.6 % more area, 234.480 W m⁻².
+
+**What it costs.** The surface cools by **0.016 K** — 286.797 → 286.781 K. Far less than the
+1.6 % area change suggests, because the extra mass sits in the thin cold stratosphere while
+the greenhouse effect is made near the ground where the factor is still 1. The CO₂ doubling
+response moves by 0.025 K out of 27.37 K, 0.09 %, so it is very nearly a constant offset that
+cancels in differences. Off by default, on the same grounds as the latent flux: it shifts the
+documented equilibrium, and everything below was produced without it.
+
+That smallness is a property of Earth, not of the code — at $r_0 = 200$ km the shift is large,
+and the suite checks that it scales as $H/r$ and vanishes as $r \to \infty$. The central test
+integrates the *original* spherical equation with fourth-order Runge–Kutta and compares, so the
+$G$ reformulation is verified rather than assumed; inverting the factor's sign fails five tests,
+including all three integration cases.
+
 ### Beyond the grey column
 
 Four optional pieces of physics, all off by default, so the baseline above is unchanged
@@ -779,6 +839,8 @@ that drawing path verifiable and gives documentation shots a way to include it.
 --moisture X               surface moisture availability, 0-1;    (0)
                            0 disables evaporation, 1 is open water
 --humidity X               near-surface relative humidity, 0-1    (0.8)
+--spherical                spherical shells, not plane-parallel   (off)
+--planet-radius-km X       radius used by --spherical             (6371)
 --lapse-rate X             critical lapse rate, K/km              (6.5)
 --surface-heat-capacity X  J/m2/K                                 (4.18e7)
 --max-steps N              iteration cap                          (500000)
@@ -944,6 +1006,14 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 - **Local thermodynamic equilibrium is assumed** — the source function is the Planck function
   everywhere. True below about 60 km, so the 50 km model top keeps it safe, but it is an
   assumption rather than a result.
+- **Sphericity is off by default, and partial when on.** `--spherical` adds the shell-area
+  and $-(2/r)F$ terms, but three related things do not follow: gravity is held at its
+  sea-level value, so the dry adiabat $g/c_p$ does not fall by its 1.6 % over 50 km (the
+  critical lapse rate is prescribed anyway); the solar interception uses the surface
+  cross-section $\pi r_0^2$ rather than the top-of-atmosphere $\pi r_\text{top}^2$; and the
+  shell factor is held constant across each segment rather than integrated within it.
+  Horizontal transport is absent in either geometry — this is a single column, not a sphere
+  of columns.
 - **The angular integral is collapsed onto one number.** The exact hemispheric flux is
   $2\pi\int_0^1 I(z,\mu)\,\mu\,\mathrm{d}\mu$; the solver replaces it with a single $D$. The
   exact $2E_3(\tau)$ transmission exists in the test suite as a reference and is never used by

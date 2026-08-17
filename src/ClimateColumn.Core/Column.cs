@@ -56,6 +56,7 @@ public sealed class Column
                 BottomPressure = pb,
                 TopPressure = pt,
                 MassPerArea = mass,
+                ShellVolumeFactor = ShellVolumeFactor(options, zb, zt),
                 Temperature = options.InitialiseFromStandardAtmosphere
                     ? StandardAtmosphere.Temperature(0.5 * (zb + zt))
                     : options.EmissionTemperature
@@ -70,6 +71,40 @@ public sealed class Column
         column.DistributeOpticalDepth();
         column.DistributeShortwave();
         return column;
+    }
+
+    /// <summary>
+    /// The volume of the shell between <paramref name="bottom"/> and <paramref name="top"/>
+    /// divided by the volume of the slab of equal thickness standing on the surface, which is
+    /// the exact integral of (r/r_0)^2 across the layer:
+    /// <c>(r_t^3 - r_b^3) / (3 r_0^2 dz)</c>. Identically 1 in plane-parallel geometry.
+    /// </summary>
+    private static double ShellVolumeFactor(ModelOptions options, double bottom, double top)
+    {
+        if (!options.SphericalGeometry) return 1.0;
+
+        double r0 = options.PlanetRadius;
+        double rb = r0 + bottom;
+        double rt = r0 + top;
+        double dz = top - bottom;
+        if (dz <= 0.0) return 1.0;
+
+        return (rt * rt * rt - rb * rb * rb) / (3.0 * r0 * r0 * dz);
+    }
+
+    /// <summary>
+    /// The geometric factor at the top of the column, (r_top/r_0)^2. Fluxes reported by the
+    /// solver are power per unit <em>surface</em> area; dividing the outgoing longwave by this
+    /// gives the actual radiant flux crossing the top of the atmosphere.
+    /// </summary>
+    public double TopGeometricFactor
+    {
+        get
+        {
+            if (!Options.SphericalGeometry) return 1.0;
+            double ratio = (Options.PlanetRadius + Options.TopAltitude) / Options.PlanetRadius;
+            return ratio * ratio;
+        }
     }
 
     /// <summary>

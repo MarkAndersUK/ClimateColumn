@@ -307,6 +307,28 @@ public sealed class ModelOptions
     /// <summary>Convective transport treatment.</summary>
     public ConvectionMode Convection { get; set; } = ConvectionMode.Full;
 
+    /// <summary>
+    /// Treat the column as a set of spherical shells on a planet of
+    /// <see cref="PlanetRadius"/> rather than a stack of plane-parallel slabs.
+    /// </summary>
+    /// <remarks>
+    /// Two things change, both following from a shell at radius r having area (r/r_0)^2 times
+    /// the surface beneath it. It holds that much more mass, so it emits that much more power
+    /// and has that much more heat capacity; and radiation leaving it spreads over a growing
+    /// area, which is the -(2/r)F term in the flux divergence.
+    ///
+    /// Optical depths are untouched, because they are path integrals along a radial ray and a
+    /// wider shell is no more opaque from below.
+    ///
+    /// Off by default, on the same grounds as the latent flux: it shifts the documented
+    /// equilibrium, and every result in the README was produced without it. The correction is
+    /// about 1.6% at the 50 km top and far less where the emission actually happens.
+    /// </remarks>
+    public bool SphericalGeometry { get; set; } = false;
+
+    /// <summary>Planet radius used when <see cref="SphericalGeometry"/> is set, m.</summary>
+    public double PlanetRadius { get; set; } = PhysicalConstants.EarthRadius;
+
     /// <summary>Near-surface wind speed used in the Koenigsberger h_c relation, m s^-1.</summary>
     public double WindSpeed { get; set; } = 3.0;
 
