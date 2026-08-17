@@ -73,11 +73,17 @@ public static class HitranLineList
         return lines;
     }
 
+    /// <summary>The CO2 15 um band, as written by scripts/fetch-hitran.ps1.</summary>
+    public const string Co2FifteenMicron = "hitran-co2-15um.csv";
+
+    /// <summary>The H2O pure rotational band, as written by scripts/fetch-hitran.ps1.</summary>
+    public const string WaterVapourRotational = "hitran-h2o-rot.csv";
+
     /// <summary>
-    /// The conventional location for the downloaded list, relative to the repository root:
-    /// <c>data/hitran-co2-15um.csv</c>. Returns null when it has not been fetched.
+    /// Locates a downloaded list under <c>data/</c> beside the solution. Returns null when it
+    /// has not been fetched, which is what lets callers skip rather than fail.
     /// </summary>
-    public static string? DefaultPath()
+    public static string? DefaultPath(string fileName = Co2FifteenMicron)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null &&
@@ -88,7 +94,7 @@ public static class HitranLineList
 
         if (directory is null) return null;
 
-        string path = Path.Combine(directory.FullName, "data", "hitran-co2-15um.csv");
+        string path = Path.Combine(directory.FullName, "data", fileName);
         return File.Exists(path) ? path : null;
     }
 

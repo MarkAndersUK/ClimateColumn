@@ -6,11 +6,14 @@ Downloads a HITRAN line list so the band approximations can be checked against r
 data rather than only against synthetic lines.
 
 ```bash
-pwsh scripts/fetch-hitran.ps1
+pwsh scripts/fetch-hitran.ps1                              # CO2 15 um band
+pwsh scripts/fetch-hitran.ps1 -Molecule h2o-rotational     # H2O rotational band
 ```
 
 No API key is needed — hitran.org's line-by-line endpoint serves this anonymously; a key is only
 required for the HAPI2 client library. There is a daily request limit, so don't loop it.
+
+The tests skip per molecule, so fetching one, both, or neither all work.
 
 The data is **not committed**. It is third-party data with its own citation requirement, and
 leaving it out keeps the repository testable with no network and no external files: the tests

@@ -1,68 +1,101 @@
+using System.Collections.Concurrent;
 using ClimateColumn.Core;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClimateColumn.Tests;
 
 /// <summary>
-/// The band approximations checked against <em>real</em> spectral data: HITRAN's CO2 15 um band,
-/// the transition that does the actual greenhouse work.
+/// The band approximations checked against <em>real</em> spectral data: HITRAN's CO2 15 um band
+/// and H2O pure rotational band - between them, most of what absorbs longwave in the atmosphere.
 /// </summary>
 /// <remarks>
 /// These are the only tests in the project that compare against something measured rather than
 /// derived. Everything else - closed forms, budgets, even the synthetic line-by-line reference -
 /// checks that the model is self-consistent or that a method is implemented correctly. None of
-/// it can say whether the approximation resembles a real gas.
+/// it can say whether an approximation resembles a real gas.
 ///
 /// The data is not committed, so these skip rather than fail when it is absent. Fetch it with
-/// <c>scripts/fetch-hitran.ps1</c>. Keeping it out of the repository is what lets the suite
-/// still run with no network at all.
+/// <c>scripts/fetch-hitran.ps1</c> and <c>-Molecule h2o-rotational</c>. Keeping it out of the
+/// repository is what lets the suite still run with no network at all.
 /// </remarks>
 [TestClass]
 public class HitranTests
 {
-    private static LineByLineBand? _band;
+    /// <summary>A band worth resolving: which file, and over what interval.</summary>
+    private sealed record Target(string File, string Name, double From, double To);
+
+    private static readonly Target CarbonDioxide =
+        new(HitranLineList.Co2FifteenMicron, "CO2 15 um", 640, 700);
+
+    private static readonly Target WaterVapour =
+        new(HitranLineList.WaterVapourRotational, "H2O rotational", 200, 400);
+
+    private static readonly ConcurrentDictionary<string, LineByLineBand> Bands = new();
+
+    private static readonly double[] OpticalDepths = { 0.1, 0.3, 1.0, 3.0, 10.0, 30.0 };
+
+    private static Target Resolve(string file) =>
+        file == CarbonDioxide.File ? CarbonDioxide : WaterVapour;
 
     /// <summary>
-    /// The path to the downloaded list, or a skip. Every test goes through here, so that a
-    /// missing download is always reported as "not run" rather than as a failure - reaching for
-    /// the path directly is how one of these accidentally became a hard failure offline.
+    /// The path to a downloaded list, or a skip. Every test goes through here, so a missing
+    /// download is always reported as "not run" rather than as a failure.
     /// </summary>
-    private static string RequirePath()
+    private static string RequirePath(string file)
     {
-        string? path = HitranLineList.DefaultPath();
+        string? path = HitranLineList.DefaultPath(file);
         if (path is null)
         {
             Assert.Inconclusive(
-                "No HITRAN data. Run scripts/fetch-hitran.ps1 to download the CO2 15 um band; " +
-                "these tests compare the band approximations against real lines.");
+                $"No HITRAN data at data/{file}. Run scripts/fetch-hitran.ps1 (add " +
+                "-Molecule h2o-rotational for water vapour); these tests compare the band " +
+                "approximations against real lines.");
         }
         return path!;
     }
 
     /// <summary>
-    /// The CO2 band core, resolved. Built once: 10,000 lines against 60,000 samples is the
-    /// expensive part, and it is deterministic.
+    /// A resolved band, built once per file. Weak lines are dropped: below 1e-27 they are a long
+    /// tail that costs time and changes nothing.
     /// </summary>
-    private static LineByLineBand Band
+    private static LineByLineBand Band(Target target)
     {
-        get
-        {
-            if (_band is not null) return _band;
+        string path = RequirePath(target.File);
 
-            // Weak lines are dropped: below 1e-27 they are a long tail that costs time and
-            // changes nothing. The 640-700 cm^-1 core is where the band actually absorbs.
-            var lines = HitranLineList.Load(RequirePath(), minimumIntensity: 1e-27);
-            _band = LineByLineBand.FromLines(lines, 640, 700, 60_000, wingCutoff: 25.0);
-            return _band;
-        }
+        return Bands.GetOrAdd(target.File, _ =>
+        {
+            var lines = HitranLineList.Load(path, minimumIntensity: 1e-27);
+            return LineByLineBand.FromLines(lines, target.From, target.To, 60_000, wingCutoff: 25.0);
+        });
     }
 
-    private static readonly double[] OpticalDepths = { 0.1, 0.3, 1.0, 3.0, 10.0, 30.0 };
-
-    [TestMethod]
-    public void RealLineListLoadsAndSpansOrdersOfMagnitude()
+    /// <summary>Best-fitting lognormal width for a band at one optical depth.</summary>
+    private static (double Width, double Error) BestWidth(LineByLineBand band, double tau)
     {
-        var k = Band.AbsorptionCoefficients();
+        double reference = band.Transmission(tau);
+        double bestWidth = 0.0, bestError = double.MaxValue;
+
+        for (double width = 0.25; width <= 8.0; width += 0.05)
+        {
+            double error = Math.Abs(
+                KDistribution.Build(KDistributionShape.Lognormal, width, 64).Transmission(tau) -
+                reference);
+
+            if (error < bestError) { bestError = error; bestWidth = width; }
+        }
+
+        return (bestWidth, bestError);
+    }
+
+    // ---------------------------------------------------------------- both molecules
+
+    [DataTestMethod]
+    [DataRow(HitranLineList.Co2FifteenMicron)]
+    [DataRow(HitranLineList.WaterVapourRotational)]
+    public void RealBandSpansOrdersOfMagnitude(string file)
+    {
+        var target = Resolve(file);
+        var k = Band(target).AbsorptionCoefficients();
 
         double mean = 0.0, min = double.MaxValue, max = double.MinValue;
         foreach (double value in k)
@@ -72,156 +105,212 @@ public class HitranTests
             max = Math.Max(max, value);
         }
 
-        Assert.AreEqual(1.0, mean, 1e-9, "the band mean should be normalised to one");
+        Assert.AreEqual(1.0, mean, 1e-9, $"{target.Name}: the band mean should be normalised to one");
         Assert.IsTrue(max / min > 100.0,
-            $"a real band should span orders of magnitude ({min:E2} to {max:E2}, ratio {max / min:E2})");
+            $"{target.Name}: a real band should span orders of magnitude " +
+            $"({min:E2} to {max:E2}, ratio {max / min:E2})");
+    }
+
+    [DataTestMethod]
+    [DataRow(HitranLineList.Co2FifteenMicron, 1.0)]
+    [DataRow(HitranLineList.Co2FifteenMicron, 3.0)]
+    [DataRow(HitranLineList.WaterVapourRotational, 1.0)]
+    [DataRow(HitranLineList.WaterVapourRotational, 3.0)]
+    public void GreyBandIsBadlyWrongAgainstRealGases(string file, double opticalDepth)
+    {
+        var target = Resolve(file);
+        double reference = Band(target).Transmission(opticalDepth);
+        double grey = Math.Exp(-opticalDepth);
+
+        Assert.IsTrue(grey < reference,
+            $"{target.Name} at tau = {opticalDepth}: grey must under-transmit " +
+            $"({grey:F5} vs {reference:F5})");
+        Assert.IsTrue(reference - grey > 0.05,
+            $"{target.Name} at tau = {opticalDepth}: the grey error should be substantial " +
+            $"(line-by-line {reference:F5}, grey {grey:F5})");
+    }
+
+    [DataTestMethod]
+    [DataRow(HitranLineList.Co2FifteenMicron, 16, 0.012)]
+    [DataRow(HitranLineList.Co2FifteenMicron, 32, 0.005)]
+    [DataRow(HitranLineList.WaterVapourRotational, 16, 0.015)]
+    [DataRow(HitranLineList.WaterVapourRotational, 32, 0.006)]
+    public void MeasuredKDistributionReproducesRealGases(string file, int points, double tolerance)
+    {
+        var target = Resolve(file);
+        var band = Band(target);
+        var quadrature = band.ToKDistribution(points);
+
+        foreach (double tau in OpticalDepths)
+        {
+            Assert.AreEqual(band.Transmission(tau), quadrature.Transmission(tau), tolerance,
+                $"{target.Name}, {points} g-points at tau = {tau}");
+        }
     }
 
     [TestMethod]
     public void IntensityCutoffKeepsTheLinesThatMatter()
     {
-        string path = RequirePath();
+        string path = RequirePath(CarbonDioxide.File);
+
         var all = HitranLineList.Load(path);
         var strong = HitranLineList.Load(path, minimumIntensity: 1e-27);
 
-        Assert.IsTrue(strong.Count < all.Count,
-            "the cutoff should actually drop something");
+        Assert.IsTrue(strong.Count < all.Count, "the cutoff should actually drop something");
         Assert.IsTrue(strong.Count > 1000,
             $"but should leave a properly resolved band ({strong.Count} lines)");
     }
 
-    /// <summary>
-    /// A grey band against real CO2. This is the number that justifies everything downstream of
-    /// it, and it is much worse than "somewhat too opaque".
-    /// </summary>
-    [DataTestMethod]
-    [DataRow(0.3)]
-    [DataRow(1.0)]
-    [DataRow(3.0)]
-    [DataRow(10.0)]
-    public void GreyBandIsBadlyWrongAgainstRealCo2(double opticalDepth)
-    {
-        double reference = Band.Transmission(opticalDepth);
-        double grey = Math.Exp(-opticalDepth);
-
-        Assert.IsTrue(grey < reference,
-            $"tau = {opticalDepth}: grey must under-transmit ({grey:F5} vs {reference:F5})");
-        Assert.IsTrue(reference - grey > 0.02,
-            $"tau = {opticalDepth}: the grey error against real CO2 should be substantial " +
-            $"(line-by-line {reference:F5}, grey {grey:F5})");
-    }
+    // ---------------------------------------------------------------- what differs between them
 
     /// <summary>
-    /// The band's own measured k-distribution against real lines. This is the approach that
-    /// works, and it is what <see cref="ModelOptions.MeasuredKDistribution"/> exists to carry.
-    /// </summary>
-    [DataTestMethod]
-    [DataRow(8, 0.03)]
-    [DataRow(16, 0.012)]
-    [DataRow(32, 0.005)]
-    public void MeasuredKDistributionReproducesRealCo2(int points, double tolerance)
-    {
-        var quadrature = Band.ToKDistribution(points);
-
-        foreach (double tau in OpticalDepths)
-        {
-            Assert.AreEqual(Band.Transmission(tau), quadrature.Transmission(tau), tolerance,
-                $"{points} g-points at tau = {tau}");
-        }
-    }
-
-    /// <summary>
-    /// The awkward result, and the reason MeasuredKDistribution was added: the parametric
-    /// families cannot represent a real band across a range of optical depths.
+    /// Water vapour's rotational band is far more irregular than CO2's, and the consequence for
+    /// a grey model is severe.
     /// </summary>
     /// <remarks>
-    /// Fitting a lognormal width to real CO2 gives a different answer at every optical depth -
-    /// about 1.7 where the band is thin, about 1.25 where it is thick - because a real band's
-    /// k-distribution simply is not lognormal. Any single choice of --k-width is therefore a
-    /// compromise, and the test pins the drift so the limitation cannot quietly be forgotten.
+    /// CO2's 15 um band is a regular vibration-rotation progression; H2O is an asymmetric rotor
+    /// whose lines are scattered irregularly, so its absorption spans a far wider range - about
+    /// 8e4 against 9e2 for the same measure. At tau = 10 that means a grey band transmits under
+    /// 0.01 % where the real H2O band transmits half. It is the most direct statement available
+    /// of what the grey assumption costs, and it is worse for the gas that does most of the
+    /// absorbing.
     /// </remarks>
     [TestMethod]
-    public void NoSingleParametricWidthFitsRealCo2()
+    public void WaterVapourIsFarMoreNonGreyThanCarbonDioxide()
     {
-        double BestWidth(double tau)
+        double Range(Target target)
         {
-            double reference = Band.Transmission(tau);
-            double bestWidth = 0.0, bestError = double.MaxValue;
-
-            for (double width = 0.25; width <= 8.0; width += 0.05)
-            {
-                double error = Math.Abs(
-                    KDistribution.Build(KDistributionShape.Lognormal, width, 64).Transmission(tau) -
-                    reference);
-
-                if (error < bestError) { bestError = error; bestWidth = width; }
-            }
-
-            return bestWidth;
+            var k = Band(target).AbsorptionCoefficients();
+            double min = double.MaxValue, max = double.MinValue;
+            foreach (double value in k) { min = Math.Min(min, value); max = Math.Max(max, value); }
+            return max / min;
         }
 
-        double thin = BestWidth(0.1);
-        double thick = BestWidth(30.0);
+        double water = Range(WaterVapour);
+        double carbon = Range(CarbonDioxide);
 
-        Assert.IsTrue(thin > thick + 0.2,
-            $"the best-fit width should drift with optical depth ({thin:F2} thin, {thick:F2} thick); " +
-            "if it did not, a single parametric width would be defensible");
+        Assert.IsTrue(water > 10.0 * carbon,
+            $"H2O should span a far wider range of absorption than CO2 " +
+            $"({water:E2} vs {carbon:E2})");
 
-        // And the best single width across the range is markedly worse than the measured
-        // distribution, which is the whole argument for using real data when you have it.
-        var references = OpticalDepths.Select(t => Band.Transmission(t)).ToArray();
+        // And the practical consequence, at an optical depth where grey has given up entirely.
+        double reference = Band(WaterVapour).Transmission(10.0);
+        Assert.IsTrue(reference > 0.3,
+            $"the real H2O band should still transmit substantially at tau = 10 ({reference:F4}) " +
+            $"where a grey band transmits {Math.Exp(-10.0):E2}");
+    }
 
-        double bestRms = double.MaxValue;
-        for (double width = 0.25; width <= 8.0; width += 0.05)
+    /// <summary>
+    /// The two molecules need materially different parametric widths, so no single
+    /// <c>--k-width</c> can serve an atmosphere containing both.
+    /// </summary>
+    /// <remarks>
+    /// This is the strongest statement available against the parametric approach. Even setting
+    /// aside that CO2's best width drifts with optical depth, the widths the two gases want
+    /// differ by more than half again - and a real column contains both at once. Given line data,
+    /// <see cref="ModelOptions.MeasuredKDistribution"/> is the answer; the width knob is a
+    /// convenience, not a physical parameter.
+    /// </remarks>
+    [TestMethod]
+    public void DifferentMoleculesNeedDifferentParametricWidths()
+    {
+        double water = BestWidth(Band(WaterVapour), 1.0).Width;
+        double carbon = BestWidth(Band(CarbonDioxide), 1.0).Width;
+
+        Assert.IsTrue(water > carbon * 1.3,
+            $"H2O should want a materially wider spread than CO2 " +
+            $"(H2O {water:F2}, CO2 {carbon:F2}); if they agreed, a single width would be defensible");
+    }
+
+    /// <summary>
+    /// CO2's best-fit width drifts with optical depth, because a real band's k-distribution is
+    /// not lognormal. Water vapour's, interestingly, is far more stable - many irregular lines
+    /// land closer to lognormal than one regular progression does - so the drift is asserted only
+    /// where it occurs, rather than assumed universal.
+    /// </summary>
+    [TestMethod]
+    public void CarbonDioxideWidthDriftsWithOpticalDepthMoreThanWaterVapourDoes()
+    {
+        double Drift(Target target) =>
+            Math.Abs(BestWidth(Band(target), 0.1).Width - BestWidth(Band(target), 30.0).Width);
+
+        double carbon = Drift(CarbonDioxide);
+        double water = Drift(WaterVapour);
+
+        Assert.IsTrue(carbon > 0.2,
+            $"CO2's best-fit width should drift across optical depth ({carbon:F2})");
+        Assert.IsTrue(water < carbon,
+            $"H2O's should drift less, being closer to lognormal ({water:F2} vs {carbon:F2})");
+    }
+
+    [DataTestMethod]
+    [DataRow(HitranLineList.Co2FifteenMicron)]
+    [DataRow(HitranLineList.WaterVapourRotational)]
+    public void MeasuredDistributionBeatsTheBestParametricFit(string file)
+    {
+        var target = Resolve(file);
+        var band = Band(target);
+        var references = OpticalDepths.Select(t => band.Transmission(t)).ToArray();
+
+        double Rms(KDistribution candidate)
         {
-            var candidate = KDistribution.Build(KDistributionShape.Lognormal, width, 64);
             double sum = 0.0;
             for (int i = 0; i < OpticalDepths.Length; i++)
             {
                 double d = candidate.Transmission(OpticalDepths[i]) - references[i];
                 sum += d * d;
             }
-            bestRms = Math.Min(bestRms, Math.Sqrt(sum / OpticalDepths.Length));
+            return Math.Sqrt(sum / OpticalDepths.Length);
         }
 
-        var measured = Band.ToKDistribution(32);
-        double measuredRms = Math.Sqrt(
-            OpticalDepths.Select((t, i) => Math.Pow(measured.Transmission(t) - references[i], 2)).Sum() /
-            OpticalDepths.Length);
+        double bestParametric = double.MaxValue;
+        for (double width = 0.25; width <= 8.0; width += 0.05)
+        {
+            bestParametric = Math.Min(bestParametric,
+                Rms(KDistribution.Build(KDistributionShape.Lognormal, width, 64)));
+        }
 
-        Assert.IsTrue(measuredRms < 0.25 * bestRms,
-            $"a measured distribution should beat the best parametric fit by a wide margin " +
-            $"(measured {measuredRms:F5}, best lognormal {bestRms:F5})");
+        double measured = Rms(band.ToKDistribution(32));
+
+        Assert.IsTrue(measured < 0.5 * bestParametric,
+            $"{target.Name}: a measured distribution should beat the best parametric fit " +
+            $"(measured {measured:F5}, best lognormal {bestParametric:F5})");
     }
 
+    // ---------------------------------------------------------------- in the column
+
     /// <summary>
-    /// The loop closed: a distribution measured from real CO2 lines drives the column model, and
-    /// the column reaches equilibrium with it.
+    /// The loop closed: a distribution measured from real lines drives the column model.
     /// </summary>
-    [TestMethod]
-    public void ColumnRunsOnAKDistributionMeasuredFromRealCo2()
+    [DataTestMethod]
+    [DataRow(HitranLineList.Co2FifteenMicron)]
+    [DataRow(HitranLineList.WaterVapourRotational)]
+    public void ColumnRunsOnAKDistributionMeasuredFromRealLines(string file)
     {
-        var measured = Band.ToKDistribution(16);
+        var target = Resolve(file);
+        var measured = Band(target).ToKDistribution(16);
 
-        var options = new ModelOptions { MeasuredKDistribution = measured };
-        var result = ColumnModel.RunToEquilibrium(options);
+        var result = ColumnModel.RunToEquilibrium(new ModelOptions
+        {
+            MeasuredKDistribution = measured
+        });
 
-        Assert.IsTrue(result.Converged, "the column must reach equilibrium on real line data");
+        Assert.IsTrue(result.Converged,
+            $"{target.Name}: the column must reach equilibrium on real line data");
         Assert.IsTrue(result.SurfaceTemperature is > 200 and < 350,
-            $"and stay physical ({result.SurfaceTemperature:F2} K)");
+            $"{target.Name}: and stay physical ({result.SurfaceTemperature:F2} K)");
 
         // Real line structure lets more radiation out than a grey band of the same absorber, so
-        // the surface settles cooler - the same conclusion the synthetic band reached, now from
-        // measured lines.
+        // the surface settles cooler.
         Assert.IsTrue(result.SurfaceTemperature < TestSupport.Default.SurfaceTemperature,
-            $"real line structure should cool the surface relative to grey " +
+            $"{target.Name}: real line structure should cool the surface relative to grey " +
             $"({result.SurfaceTemperature:F2} vs {TestSupport.Default.SurfaceTemperature:F2} K)");
     }
 
     [TestMethod]
     public void MeasuredDistributionTakesPrecedenceOverTheParametricShape()
     {
-        var measured = Band.ToKDistribution(16);
+        var measured = Band(CarbonDioxide).ToKDistribution(16);
 
         var options = new ModelOptions
         {

@@ -288,38 +288,49 @@ smaller than ignoring the structure, and a useful thing to know because it says 
 g-points has stopped buying anything. That the same calculation at a single pressure throughout
 agrees to 6 × 10⁻⁶ confirms the floor is the assumption and not a bug.
 
-### Checked against real CO₂
+### Checked against real CO₂ and water vapour
 
 The reference above validates the *method*. Whether the approximation resembles a real gas is a
 different question, and it needs real line data:
 
 ```
 pwsh scripts/fetch-hitran.ps1
+pwsh scripts/fetch-hitran.ps1 -Molecule h2o-rotational
 ```
 
-That downloads HITRAN's CO₂ 15 µm band — 28,619 lines over 580–760 cm⁻¹, no API key required.
-The data is **not committed**: it is third-party data with its own citation requirement, and
-leaving it out keeps the suite runnable with no network at all. `HitranTests` skips rather than
-fails when it is absent (198 pass + 12 skip offline; 210 pass with the data).
+CO₂'s 15 µm band (28,619 lines) and water vapour's pure rotational band (4,219 lines) — no API
+key required. The data is **not committed**: it is third-party data with its own citation
+requirement, and leaving it out keeps the suite runnable with no network at all. The tests skip
+rather than fail when it is absent — 198 pass + 19 skip with nothing fetched, 217 with both.
 
-Transmission through the band core, 640–700 cm⁻¹, 10,329 lines above an intensity cutoff:
-
-| τ | line-by-line | grey | best lognormal | measured, 16 | measured, 32 |
+| τ | | line-by-line | grey | best lognormal | measured, 32 |
 |---|---|---|---|---|---|
-| 0.3 | 0.841 | 0.741 | 0.826 | 0.832 | 0.839 |
-| 1.0 | 0.666 | 0.368 | 0.639 | 0.664 | 0.666 |
-| 3.0 | 0.434 | 0.050 | 0.420 | 0.433 | 0.433 |
-| 10 | 0.162 | 0.000 | 0.201 | 0.161 | 0.162 |
+| 1.0 | CO₂ | 0.666 | 0.368 | 0.639 | 0.666 |
+| 3.0 | CO₂ | 0.434 | 0.050 | 0.420 | 0.433 |
+| 1.0 | H₂O | 0.808 | 0.368 | — | 0.807 |
+| 3.0 | H₂O | 0.682 | 0.050 | — | 0.681 |
+| 10 | H₂O | **0.504** | **0.00005** | — | 0.503 |
 
-Grey is catastrophic against real CO₂ — at τ = 3 it transmits 5 % where the band transmits 43 %.
-The band's own **measured** k-distribution is excellent: 32 g-points track line-by-line to 0.001.
+That last row is the clearest statement of what the grey assumption costs: at τ = 10 a grey band
+transmits five thousandths of a percent where the real water-vapour band transmits **half**. And
+it is worst for the gas that does most of the absorbing. The measured k-distribution tracks
+line-by-line to ~0.001 for both molecules.
 
-But the parametric families do not fit. The best-fitting lognormal width **drifts with optical
-depth** — 1.70 where the band is thin, 1.65 at τ = 1, 1.25 where it is thick — because a real
-band's k-distribution simply is not lognormal. No single `--k-width` is right, and the best
-compromise is roughly four times worse than the measured distribution. That is a negative result
-about this model's own knob, and it is why `ModelOptions.MeasuredKDistribution` exists: given
-line data, use the band's real distribution rather than a fitted shape.
+Water vapour is far more non-grey than CO₂ — its absorption spans a factor of 7.6 × 10⁴ against
+CO₂'s 8.7 × 10², because CO₂'s 15 µm band is a regular vibration–rotation progression while H₂O
+is an asymmetric rotor with lines scattered irregularly.
+
+**The parametric families do not fit**, which is a negative result about this model's own knob:
+
+- CO₂'s best-fitting lognormal width **drifts with optical depth** — 1.70 thin, 1.25 thick —
+  because a real band's k-distribution is not lognormal.
+- The two molecules want **different widths**: 2.40 for H₂O against 1.50–1.70 for CO₂. No single
+  `--k-width` can serve an atmosphere containing both.
+- H₂O is, interestingly, the better-behaved of the two: many irregular lines land closer to
+  lognormal than one regular progression does, so its width barely drifts (2.30 → 2.35).
+
+Hence `ModelOptions.MeasuredKDistribution` — given line data, use the band's real distribution
+rather than a fitted shape.
 
 Two simplifications are stated rather than buried: intensities are used at their 296 K values,
 since scaling them properly needs total internal partition sums, and only air broadening is
@@ -654,14 +665,17 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 - **The continuum's strength is tuned, not derived.** Its two scalings are physical, but the
   magnitude is one free parameter rather than fitted MT_CKD coefficients, and it is applied
   only inside the window rather than across the spectrum.
-- **The parametric k-distribution does not fit a real band.** Measured against HITRAN's CO₂
-  15 µm band, the best lognormal width drifts from 1.70 to 1.25 across optical depth, so any
-  single `--k-width` is a compromise roughly four times worse than the band's own measured
-  distribution. Use `MeasuredKDistribution` when you have line data.
-- **Only one band of one molecule has been checked.** CO₂ at 15 µm, at 296 K, with air
-  broadening only and no temperature dependence of line strength. Water vapour — which does
-  most of the actual absorbing — has not been compared at all, and the column model still runs
-  on one broadband absorber rather than on the spectral data.
+- **The parametric k-distribution does not fit real bands.** CO₂'s best lognormal width drifts
+  from 1.70 to 1.25 across optical depth, and H₂O wants 2.40 where CO₂ wants 1.50 — so no single
+  `--k-width` can serve an atmosphere containing both. Use `MeasuredKDistribution` when you have
+  line data.
+- **One band per molecule, at one temperature.** CO₂ at 15 µm and H₂O's rotational band, both at
+  296 K with air broadening only and no temperature dependence of line strength. The other bands
+  that matter — H₂O's 6.3 µm bending band, the 9.6 µm ozone band — are untouched.
+- **The column model still runs on one broadband absorber.** The spectral data informs the
+  k-distribution it uses, but the model does not solve band by band, so the CO₂ and H₂O
+  distributions cannot both be in play at once. That is the next structural step, not a
+  parameter change.
 - **The diffusivity is band-independent.** $D = 2$ is exact in the optically *thin* limit,
   which makes it the worst choice for opaque band centres. One $D$ cannot be right for bands
   spanning $\tau \ll 1$ to $\tau \gg 1$; the exact $2E_3(\tau)$ transmission would be needed.
