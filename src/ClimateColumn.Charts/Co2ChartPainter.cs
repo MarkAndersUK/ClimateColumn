@@ -11,10 +11,15 @@ namespace ClimateColumn.Charts;
 /// control and the PNG export, so what you save is exactly what you saw.
 /// </summary>
 /// <remarks>
-/// Mark specs match the HTML renderer: 2px lines with round joins, dashing for the
-/// logarithmic expectation, solid hairline gridlines, 9px end markers ringed in the surface
-/// colour, and direct labels on the four line ends only. Hue carries the configuration and
-/// dashing carries model-versus-expectation, so two categorical colours cover four lines.
+/// Mark specs match the HTML renderer: 2px lines with round joins, dashing for the reference
+/// law, solid hairline gridlines, 9px end markers ringed in the surface colour, and direct
+/// labels on the line ends only. Hue carries the configuration and dashing carries
+/// model-versus-reference.
+///
+/// What is plotted comes from <see cref="Co2ChartQuantity"/>, which also decides whether a
+/// reference curve is drawn at all: forcing has one, because 5.35 ln(C/C0) is a statement about
+/// forcing and can be compared directly; temperature does not, because converting that law into
+/// a temperature would need the model's own sensitivity.
 /// </remarks>
 public static class Co2ChartPainter
 {
@@ -24,7 +29,7 @@ public static class Co2ChartPainter
     private const int LegendHeight = 34;
 
     public static void Paint(Graphics g, Rectangle bounds, IReadOnlyList<Co2Sweep> sweeps,
-        ChartTheme theme, int? hoverIndex)
+        ChartTheme theme, int? hoverIndex, Co2ChartQuantity quantity)
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
@@ -43,17 +48,9 @@ public static class Co2ChartPainter
         double[] ppm = Co2Sweep.Concentrations;
         double xMin = ppm[0], xMax = ppm[^1];
 
-        // Round the range outward to whole kelvin so ticks land on clean numbers.
-        double lo = double.MaxValue, hi = double.MinValue;
-        foreach (var s in sweeps)
-        {
-            for (int i = 0; i < s.Points.Count; i++)
-            {
-                lo = Math.Min(lo, Math.Min(s.Points[i].SurfaceTemperature, s.Expected(i)));
-                hi = Math.Max(hi, Math.Max(s.Points[i].SurfaceTemperature, s.Expected(i)));
-            }
-        }
-        double yMin = Math.Floor(lo) - 1, yMax = Math.Ceiling(hi) + 1;
+        // The axis range and gridline spacing come from the quantity, shared with the HTML
+        // renderer so the two figures cannot drift apart.
+        var (yMin, yMax, yStep) = quantity.Range(sweeps);
 
         float X(double c) => plot.Left + (float)((c - xMin) / (xMax - xMin) * plot.Width);
         float Y(double t) => plot.Top + (float)((yMax - t) / (yMax - yMin) * plot.Height);
@@ -67,32 +64,38 @@ public static class Co2ChartPainter
         using var inkBrush = new SolidBrush(theme.Ink);
         using var secondaryBrush = new SolidBrush(theme.InkSecondary);
 
-        DrawGrid(g, plot, yMin, yMax, Y, theme, tickFont, mutedBrush);
+        DrawGrid(g, plot, yMin, yMax, yStep, Y, quantity, theme, tickFont, mutedBrush);
         DrawXAxis(g, plot, ppm, X, theme, tickFont, mutedBrush);
-        DrawAxisTitles(g, bounds, plot, titleFont, secondaryBrush);
-        DrawLegend(g, bounds, sweeps, theme, labelFont, secondaryBrush);
-        DrawSeries(g, sweeps, X, Y, theme);
-        DrawEndLabels(g, plot, sweeps, Y, theme, boldFont, tickFont, inkBrush, mutedBrush);
+        DrawAxisTitles(g, bounds, plot, quantity, titleFont, secondaryBrush);
+        DrawLegend(g, bounds, sweeps, quantity, theme, labelFont, secondaryBrush);
+        DrawSeries(g, sweeps, X, Y, quantity, theme);
+        DrawEndLabels(g, plot, sweeps, Y, quantity, theme, boldFont, tickFont, inkBrush, mutedBrush);
 
         if (hoverIndex is int idx && idx >= 0 && idx < ppm.Length)
         {
-            DrawHover(g, plot, sweeps, idx, X, Y, theme, labelFont, boldFont);
+            DrawHover(g, plot, sweeps, idx, X, Y, quantity, theme, labelFont, boldFont);
         }
     }
 
-    private static void DrawGrid(Graphics g, Rectangle plot, double yMin, double yMax,
-        Func<double, float> Y, ChartTheme theme, Font tickFont, Brush mutedBrush)
+    private static void DrawGrid(Graphics g, Rectangle plot, double yMin, double yMax, double step,
+        Func<double, float> Y, Co2ChartQuantity quantity, ChartTheme theme, Font tickFont,
+        Brush mutedBrush)
     {
         using var gridPen = new Pen(theme.Grid, 1f);
-        int step = (int)Math.Max(1, Math.Round((yMax - yMin) / 6.0));
+        using var zeroPen = new Pen(theme.Axis, 1f);
 
         using var right = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };
 
         for (double t = yMin; t <= yMax + 1e-9; t += step)
         {
             float y = Y(t);
-            g.DrawLine(gridPen, plot.Left, y, plot.Right, y);
-            g.DrawString(t.ToString("F0", Inv), tickFont, mutedBrush,
+
+            // Zero is a real datum on the forcing axis - the reference concentration - so it
+            // gets the axis weight rather than a gridline's.
+            bool isZero = Math.Abs(t) < 1e-9 && yMin < -1e-9;
+            g.DrawLine(isZero ? zeroPen : gridPen, plot.Left, y, plot.Right, y);
+
+            g.DrawString(t.ToString(quantity.TickFormat, Inv), tickFont, mutedBrush,
                 new RectangleF(plot.Left - 60, y - 8, 52, 16), right);
         }
     }
@@ -115,7 +118,7 @@ public static class Co2ChartPainter
     }
 
     private static void DrawAxisTitles(Graphics g, Rectangle bounds, Rectangle plot,
-        Font font, Brush brush)
+        Co2ChartQuantity quantity, Font font, Brush brush)
     {
         using var centre = new StringFormat { Alignment = StringAlignment.Center };
 
@@ -125,7 +128,7 @@ public static class Co2ChartPainter
         var state = g.Save();
         g.TranslateTransform(bounds.Left + 18, plot.Top + plot.Height / 2f);
         g.RotateTransform(-90);
-        g.DrawString("Surface temperature (K)", font, brush,
+        g.DrawString(quantity.AxisTitle, font, brush,
             new RectangleF(-plot.Height / 2f, -10, plot.Height, 20), centre);
         g.Restore(state);
     }
@@ -135,19 +138,21 @@ public static class Co2ChartPainter
     /// alone. Each key repeats the line's own dash pattern.
     /// </summary>
     private static void DrawLegend(Graphics g, Rectangle bounds, IReadOnlyList<Co2Sweep> sweeps,
-        ChartTheme theme, Font font, Brush brush)
+        Co2ChartQuantity quantity, ChartTheme theme, Font font, Brush brush)
     {
         float x = bounds.Left + MarginLeft;
         float y = bounds.Top + MarginTop - 6;
 
+        var patterns = quantity.HasReference ? new[] { false, true } : new[] { false };
+
         for (int s = 0; s < sweeps.Count; s++)
         {
-            foreach (bool dashed in new[] { false, true })
+            foreach (bool dashed in patterns)
             {
-                // The dashed curve is a reference built from the accepted forcing law, not
-                // something the model produced, so it must not read as though it were.
+                // The dashed curve is the accepted law, not something the model produced, so it
+                // must not read as though it were.
                 string text = dashed
-                    ? $"{sweeps[s].Label} (logarithmic reference)"
+                    ? $"{quantity.ReferenceLabel} (accepted law)"
                     : $"{sweeps[s].Label} (model)";
                 var size = g.MeasureString(text, font);
 
@@ -174,19 +179,23 @@ public static class Co2ChartPainter
     }
 
     private static void DrawSeries(Graphics g, IReadOnlyList<Co2Sweep> sweeps,
-        Func<double, float> X, Func<double, float> Y, ChartTheme theme)
+        Func<double, float> X, Func<double, float> Y, Co2ChartQuantity quantity, ChartTheme theme)
     {
         for (int s = 0; s < sweeps.Count; s++)
         {
+            var sweep = sweeps[s];
             var colour = theme.Series[s % theme.Series.Length];
 
-            DrawLine(g, sweeps[s], i => sweeps[s].Points[i].SurfaceTemperature, X, Y, colour, dashed: false);
-            DrawLine(g, sweeps[s], i => sweeps[s].Expected(i), X, Y, colour, dashed: true);
+            DrawLine(g, sweep, i => quantity.Model(sweep, i), X, Y, colour, dashed: false);
+            if (quantity.Reference is { } reference)
+            {
+                DrawLine(g, sweep, i => reference(sweep, i), X, Y, colour, dashed: true);
+            }
 
             // End marker on the model curve, ringed in the surface colour.
             int last = sweeps[s].Points.Count - 1;
             float mx = X(sweeps[s].Points[last].Ppm);
-            float my = Y(sweeps[s].Points[last].SurfaceTemperature);
+            float my = Y(quantity.Model(sweep, last));
 
             using var fill = new SolidBrush(colour);
             using var ring = new Pen(theme.Surface, 2f);
@@ -220,15 +229,23 @@ public static class Co2ChartPainter
     /// are pushed apart and joined back to their own end by a leader, rather than stacked.
     /// </summary>
     private static void DrawEndLabels(Graphics g, Rectangle plot, IReadOnlyList<Co2Sweep> sweeps,
-        Func<double, float> Y, ChartTheme theme, Font boldFont, Font subFont,
-        Brush inkBrush, Brush mutedBrush)
+        Func<double, float> Y, Co2ChartQuantity quantity, ChartTheme theme, Font boldFont,
+        Font subFont, Brush inkBrush, Brush mutedBrush)
     {
         var entries = new List<(double Value, string Note, int Slot, float Anchor)>();
         for (int s = 0; s < sweeps.Count; s++)
         {
-            int last = sweeps[s].Points.Count - 1;
-            entries.Add((sweeps[s].Points[last].SurfaceTemperature, "model", s, Y(sweeps[s].Points[last].SurfaceTemperature)));
-            entries.Add((sweeps[s].Expected(last), "log reference", s, Y(sweeps[s].Expected(last))));
+            var sweep = sweeps[s];
+            int last = sweep.Points.Count - 1;
+
+            double model = quantity.Model(sweep, last);
+            entries.Add((model, "model", s, Y(model)));
+
+            if (quantity.Reference is { } reference)
+            {
+                double value = reference(sweep, last);
+                entries.Add((value, "accepted law", s, Y(value)));
+            }
         }
 
         entries.Sort((a, b) => a.Anchor.CompareTo(b.Anchor));
@@ -267,7 +284,8 @@ public static class Co2ChartPainter
                 });
             }
 
-            g.DrawString($"{e.Value.ToString("F1", Inv)} K", boldFont, inkBrush, plot.Right + 18, labelY - 8);
+            g.DrawString($"{e.Value.ToString(quantity.EndLabelFormat, Inv)} {quantity.Unit}",
+                boldFont, inkBrush, plot.Right + 18, labelY - 8);
             g.DrawString(e.Note, subFont, mutedBrush, plot.Right + 18, labelY + 4);
         }
     }
@@ -277,8 +295,8 @@ public static class Co2ChartPainter
     /// in the values grid, so this enhances rather than gates.
     /// </summary>
     private static void DrawHover(Graphics g, Rectangle plot, IReadOnlyList<Co2Sweep> sweeps,
-        int idx, Func<double, float> X, Func<double, float> Y, ChartTheme theme,
-        Font font, Font boldFont)
+        int idx, Func<double, float> X, Func<double, float> Y, Co2ChartQuantity quantity,
+        ChartTheme theme, Font font, Font boldFont)
     {
         float px = X(Co2Sweep.Concentrations[idx]);
 
@@ -288,21 +306,19 @@ public static class Co2ChartPainter
         var rows = new List<(string Text, Color Colour, bool Dashed, string Value)>();
         for (int s = 0; s < sweeps.Count; s++)
         {
+            var sweep = sweeps[s];
             var colour = theme.Series[s % theme.Series.Length];
-            rows.Add((sweeps[s].Label, colour, false,
-                sweeps[s].Points[idx].SurfaceTemperature.ToString("F2", Inv) + " K"));
-            rows.Add((sweeps[s].Label + " (logarithmic reference)", colour, true,
-                sweeps[s].Expected(idx).ToString("F2", Inv) + " K"));
 
-            foreach (var (value, dashed) in new[]
-                     { (sweeps[s].Points[idx].SurfaceTemperature, false), (sweeps[s].Expected(idx), true) })
+            foreach (var (value, dashed, label) in HoverEntries(sweep, idx, quantity))
             {
+                rows.Add((label, colour, dashed,
+                    value.ToString(quantity.ValueFormat, Inv) + " " + quantity.Unit));
+
                 float y = Y(value);
                 using var fill = new SolidBrush(colour);
                 using var ring = new Pen(theme.Surface, 2f);
                 g.FillEllipse(fill, px - 4.5f, y - 4.5f, 9f, 9f);
                 g.DrawEllipse(ring, px - 4.5f, y - 4.5f, 9f, 9f);
-                _ = dashed;
             }
         }
 
@@ -328,10 +344,10 @@ public static class Co2ChartPainter
 
             for (int s = 0; s < sweeps.Count; s++)
             {
-                foreach (double t in new[] { sweeps[s].Points[j].SurfaceTemperature, sweeps[s].Expected(j) })
+                foreach (var (value, _, _) in HoverEntries(sweeps[s], j, quantity))
                 {
-                    highest = Math.Min(highest, Y(t));
-                    lowest = Math.Max(lowest, Y(t));
+                    highest = Math.Min(highest, Y(value));
+                    lowest = Math.Max(lowest, Y(value));
                 }
             }
         }
@@ -369,6 +385,21 @@ public static class Co2ChartPainter
             g.DrawString(row.Value, boldFont, inkBrush, box.Right - pad - valueWidth, ry + 1);
 
             ry += rowHeight;
+        }
+    }
+
+    /// <summary>
+    /// The series a hover readout lists at one concentration: the model always, plus the
+    /// reference law where the quantity has one.
+    /// </summary>
+    private static IEnumerable<(double Value, bool Dashed, string Label)> HoverEntries(
+        Co2Sweep sweep, int index, Co2ChartQuantity quantity)
+    {
+        yield return (quantity.Model(sweep, index), false, sweep.Label);
+
+        if (quantity.Reference is { } reference)
+        {
+            yield return (reference(sweep, index), true, quantity.ReferenceLabel!);
         }
     }
 }

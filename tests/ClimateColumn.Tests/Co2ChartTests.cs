@@ -292,7 +292,7 @@ public class Co2ChartTests
 
         var series = root.GetProperty("series");
         Assert.AreEqual(2 * Plotted.Length, series.GetArrayLength(),
-            "a model series and an expectation series per plotted configuration");
+            "a model series and an accepted-law series per plotted configuration");
 
         foreach (var entry in series.EnumerateArray())
         {
@@ -301,11 +301,20 @@ public class Co2ChartTests
                 $"series {entry.GetProperty("id").GetString()} is the wrong length");
         }
 
+        Assert.AreEqual("W/m²", root.GetProperty("unit").GetString(),
+            "the tooltip takes its unit from the data, so the figure's quantity must be there");
+
         // Spot-check that the values really are the plotted model's, not a stale copy or a
-        // configuration that is no longer on the chart.
-        double firstModelValue = series[0].GetProperty("values")[0].GetDouble();
-        Assert.AreEqual(Plotted[0].Points[0].SurfaceTemperature, firstModelValue, 1e-4,
-            "the hover data should carry the same temperatures the lines were drawn from");
+        // configuration that is no longer on the chart. The default figure is forcing, so the
+        // last point is the one that carries information - the first is zero by definition.
+        int last = Co2Sweep.Concentrations.Length - 1;
+        double lastModelValue = series[0].GetProperty("values")[last].GetDouble();
+        Assert.AreEqual(Plotted[0].Forcings[last], lastModelValue, 1e-4,
+            "the hover data should carry the same forcings the lines were drawn from");
+
+        double lastAccepted = series[1].GetProperty("values")[last].GetDouble();
+        Assert.AreEqual(Plotted[0].AcceptedForcing(last), lastAccepted, 1e-4,
+            "the dashed series should be the accepted law, unconverted");
 
         // Each dot the script moves must exist in the SVG, keyed by series id.
         foreach (var entry in series.EnumerateArray())

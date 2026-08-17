@@ -31,6 +31,26 @@ public sealed class Co2Sweep
     /// <summary>Accepted CO2 forcing coefficient, W m^-2 per ln(C/C0).</summary>
     public const double AcceptedForcingCoefficient = 5.35;
 
+    /// <summary>
+    /// The sweeps a chart should show: the spectrally derived configuration alone, or nothing
+    /// when the HITRAN line lists have not been fetched.
+    /// </summary>
+    /// <remarks>
+    /// One place decides this, because it previously did not. A calibrated grey curve beside the
+    /// spectral one invited the figure to be read as a comparison of two models rather than as one
+    /// model against the forcing law it ought to follow, so it was removed - but only from the
+    /// HTML artifact. The WinForms app and the PNG export went on building all three sweeps for
+    /// several commits, because each surface chose its own list. They now all call this.
+    ///
+    /// Returning empty rather than falling back to the grey configurations is deliberate: a
+    /// caller with no line data should say so, not quietly draw something else.
+    /// </remarks>
+    public static Co2Sweep[] ForChart()
+    {
+        var spectral = SpectralBands();
+        return spectral is null ? Array.Empty<Co2Sweep>() : new[] { spectral };
+    }
+
     public required string Label { get; init; }
     public required string Command { get; init; }
     public required IReadOnlyList<Co2Point> Points { get; init; }

@@ -23,6 +23,23 @@ public sealed class Co2ChartView : Control
 
     public ChartTheme Theme { get; set; }
 
+    private Co2ChartQuantity _quantity = Co2ChartQuantity.Forcing;
+
+    /// <summary>
+    /// Which quantity is plotted. Forcing by default: it is the comparison that borrows nothing
+    /// from the model, since 5.35 ln(C/C0) is itself a statement about forcing.
+    /// </summary>
+    public Co2ChartQuantity Quantity
+    {
+        get => _quantity;
+        set
+        {
+            if (ReferenceEquals(_quantity, value)) return;
+            _quantity = value;
+            Invalidate();
+        }
+    }
+
     /// <summary>Fired when the pointer moves to a different concentration, or leaves.</summary>
     public event Action<int?>? HoverChanged;
 
@@ -49,7 +66,7 @@ public sealed class Co2ChartView : Control
             return;
         }
 
-        Co2ChartPainter.Paint(e.Graphics, ClientRectangle, _sweeps, Theme, _hoverIndex);
+        Co2ChartPainter.Paint(e.Graphics, ClientRectangle, _sweeps, Theme, _hoverIndex, _quantity);
     }
 
     protected override void OnMouseMove(MouseEventArgs e)

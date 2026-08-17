@@ -16,13 +16,21 @@ public static class Program
                 Console.WriteLine("""
                     climatecolumn-charts - plots the CO2 concentration response of the column
 
-                    With no arguments it opens a window: the chart, a values grid, a light/dark
-                    toggle and a Save PNG action. Hovering reads out every series at the nearest
-                    swept concentration.
+                    With no arguments it opens a window: the chart, a values grid, a
+                    forcing/temperature toggle, a light/dark toggle and a Save PNG action.
+                    Hovering reads out every series at the nearest swept concentration.
+
+                    The default view is radiative forcing in W/m2, model against the accepted
+                    5.35 ln(C/C0). That comparison borrows nothing: the accepted law is itself a
+                    statement about forcing. The temperature view carries no reference curve,
+                    because turning that law into a temperature would need the model's own
+                    sensitivity - which would make the reference partly a restatement of the
+                    thing it is meant to test.
 
                     Usage: climatecolumn-charts [options]
 
                       --png PATH        render straight to a PNG and exit, no window
+                      --temperature     plot surface temperature instead of forcing
                       --dark            use the dark palette for --png
                       --width N         PNG width in pixels   (1100)
                       --height N        PNG height in pixels  (700)
@@ -30,7 +38,9 @@ public static class Program
                       --help            this message
 
                     The sweep itself lives in ClimateColumn.Core (Co2Sweep), so this app, the
-                    CLI and the test suite all plot the same numbers.
+                    CLI and the test suite all plot the same numbers. Only the spectrally derived
+                    configuration is charted, so HITRAN data is required - fetch it with
+                    scripts/fetch-hitran.ps1 -Molecule all.
                     """);
                 return 0;
             }
@@ -45,19 +55,19 @@ public static class Program
 
                 Console.WriteLine("Running the column to equilibrium at each concentration…");
 
-                var sweepList = new List<Co2Sweep>
+                // Empty unless the HITRAN line lists have been fetched.
+                var sweeps = Co2Sweep.ForChart();
+                if (sweeps.Length == 0)
                 {
-                    Co2Sweep.NoFeedback(),
-                    Co2Sweep.WithWaterVapourFeedback()
-                };
+                    Console.Error.WriteLine(
+                        "error: no HITRAN data, so there is nothing to chart. Run " +
+                        "scripts/fetch-hitran.ps1 -Molecule all.");
+                    return 1;
+                }
 
-                // Null unless the HITRAN line lists have been fetched.
-                var spectral = Co2Sweep.SpectralBands();
-                if (spectral is not null) sweepList.Add(spectral);
-                else Console.WriteLine("  (no HITRAN data - run scripts/fetch-hitran.ps1 -Molecule all");
-                if (spectral is null) Console.WriteLine("   to add the spectral series)");
-
-                var sweeps = sweepList.ToArray();
+                var quantity = args.Contains("--temperature")
+                    ? Co2ChartQuantity.SurfaceTemperature
+                    : Co2ChartQuantity.Forcing;
 
                 int? hover = null;
                 string? hoverPpm = Value(args, "--hover");
@@ -74,15 +84,17 @@ public static class Program
                     hover = at;
                 }
 
-                Co2ChartExport.SavePng(png, sweeps, theme, width, height, hover);
+                Co2ChartExport.SavePng(png, sweeps, theme, width, height, hover, quantity);
 
                 int last = Co2Sweep.Concentrations.Length - 1;
                 foreach (var sweep in sweeps)
                 {
+                    double accepted = sweep.AcceptedForcing(last);
                     Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                        "  {0,-28} +{1:F2} K   (expected +{2:F2} K, over by {3:F2})",
-                        sweep.Label, sweep.Warming(last),
-                        sweep.Expected(last) - sweep.BaseTemperature, sweep.Overshoot(last)));
+                        "  {0,-28} F = {1:F3} W/m2 vs {2:F3} accepted (ratio {3:F2}),  +{4:F2} K",
+                        sweep.Label, sweep.Forcings[last], accepted,
+                        Math.Abs(accepted) > 1e-9 ? sweep.Forcings[last] / accepted : double.NaN,
+                        sweep.Warming(last)));
                 }
 
                 Console.WriteLine($"Chart written to {Path.GetFullPath(png)}");

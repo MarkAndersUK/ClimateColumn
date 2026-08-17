@@ -32,27 +32,31 @@ internal static class Co2ChartRenderer
     private static readonly double[] XTicks = { 285, 400, 500, 600, 700, 800, 900, 1000 };
 
     /// <summary>
-    /// Renders any number of sweeps. Two are the calibrated grey configurations; a third, when the
-    /// HITRAN line lists have been fetched, is driven by derived spectral bands.
+    /// Renders the sweeps as one interactive figure of <paramref name="quantity"/>.
     /// </summary>
-    public static string Render(params Co2Sweep[] sweeps)
+    /// <remarks>
+    /// Forcing by default, because that is the comparison the figure exists to make: the accepted
+    /// law 5.35 ln(C/C0) is a statement about forcing in W m^-2, so plotting the model's own
+    /// forcing beside it borrows nothing. Plotting temperature against that law instead needs a
+    /// sensitivity to convert with, and the only one to hand is the model's own - which makes the
+    /// reference partly a restatement of the thing it is meant to test.
+    ///
+    /// Only one figure is drawn rather than one per quantity: the hover layer is built on
+    /// singleton element ids, so a second figure on the same page would fight it for them.
+    /// Temperature is on the page as a table column instead, and the WinForms app plots it.
+    /// </remarks>
+    public static string Render(Co2Sweep[] sweeps, Co2ChartQuantity? quantity = null)
     {
         if (sweeps.Length == 0) throw new ArgumentException("at least one sweep is needed.");
+
+        quantity ??= Co2ChartQuantity.Forcing;
 
         double xMin = Co2Sweep.Concentrations[0];
         double xMax = Co2Sweep.Concentrations[^1];
 
-        // Round the y range outward to whole kelvin so the ticks land on clean numbers.
-        double lo = double.MaxValue, hi = double.MinValue;
-        foreach (var s in sweeps)
-        {
-            for (int i = 0; i < s.Points.Count; i++)
-            {
-                lo = Math.Min(lo, Math.Min(s.Points[i].SurfaceTemperature, s.Expected(i)));
-                hi = Math.Max(hi, Math.Max(s.Points[i].SurfaceTemperature, s.Expected(i)));
-            }
-        }
-        double yMin = Math.Floor(lo) - 1, yMax = Math.Ceiling(hi) + 1;
+        // Axis range and gridline spacing come from the quantity, shared with the WinForms
+        // painter so the two figures cannot drift apart.
+        var (yMin, yMax, tickStep) = quantity.Range(sweeps);
 
         double X(double ppm) => MarginLeft + (ppm - xMin) / (xMax - xMin) * PlotWidth;
         double Y(double t) => MarginTop + (yMax - t) / (yMax - yMin) * PlotHeight;
@@ -60,15 +64,18 @@ internal static class Co2ChartRenderer
         var svg = new StringBuilder();
 
         // Gridlines and y ticks - solid hairlines, one step off the surface.
-        int tickStep = (int)Math.Max(1, Math.Round((yMax - yMin) / 6.0));
         for (double t = yMin; t <= yMax + 1e-9; t += tickStep)
         {
+            // Zero is a real datum on the forcing axis - the reference concentration - so it gets
+            // the axis weight rather than a gridline's.
+            bool isZero = Math.Abs(t) < 1e-9 && yMin < -1e-9;
+
             svg.AppendLine(Fmt(
-                "  <line x1=\"{0}\" x2=\"{1}\" y1=\"{2:F1}\" y2=\"{2:F1}\" stroke=\"var(--grid)\" stroke-width=\"1\"/>",
-                MarginLeft, MarginLeft + PlotWidth, Y(t)));
+                "  <line x1=\"{0}\" x2=\"{1}\" y1=\"{2:F1}\" y2=\"{2:F1}\" stroke=\"var(--{3})\" stroke-width=\"1\"/>",
+                MarginLeft, MarginLeft + PlotWidth, Y(t), isZero ? "axis" : "grid"));
             svg.AppendLine(Fmt(
-                "  <text x=\"{0}\" y=\"{1:F1}\" text-anchor=\"end\" class=\"tick\">{2:F0}</text>",
-                MarginLeft - 12, Y(t) + 4, t));
+                "  <text x=\"{0}\" y=\"{1:F1}\" text-anchor=\"end\" class=\"tick\">{2}</text>",
+                MarginLeft - 12, Y(t) + 4, t.ToString(quantity.TickFormat, Inv)));
         }
 
         // Axis rule and x ticks.
@@ -87,23 +94,27 @@ internal static class Co2ChartRenderer
             "  <text x=\"{0:F1}\" y=\"{1}\" text-anchor=\"middle\" class=\"axis-title\">CO₂ concentration (ppm)</text>",
             MarginLeft + PlotWidth / 2.0, Height - 10));
         svg.AppendLine(Fmt(
-            "  <text x=\"{0:F1}\" y=\"16\" transform=\"rotate(-90)\" text-anchor=\"middle\" class=\"axis-title\">Surface temperature (K)</text>",
-            -(MarginTop + PlotHeight / 2.0)));
+            "  <text x=\"{0:F1}\" y=\"16\" transform=\"rotate(-90)\" text-anchor=\"middle\" class=\"axis-title\">{1}</text>",
+            -(MarginTop + PlotHeight / 2.0), Escape(quantity.AxisTitle)));
 
-        // Lines: 2px, round join and cap. Dashed marks the logarithmic expectation.
+        // Lines: 2px, round join and cap. Dashed marks the accepted law.
         for (int s = 0; s < sweeps.Length; s++)
         {
+            var sweep = sweeps[s];
             string color = Fmt("var(--series-{0})", Slot(s));
 
             svg.AppendLine(Fmt(
                 "  <path class=\"series-line\" d=\"{0}\" fill=\"none\" stroke=\"{1}\" stroke-width=\"2\" " +
                 "stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
-                Path(sweeps[s], i => sweeps[s].Points[i].SurfaceTemperature, X, Y), color));
+                Path(sweep, i => quantity.Model(sweep, i), X, Y), color));
 
-            svg.AppendLine(Fmt(
-                "  <path class=\"series-line\" d=\"{0}\" fill=\"none\" stroke=\"{1}\" stroke-width=\"2\" " +
-                "stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-dasharray=\"7 5\" opacity=\"0.85\"/>",
-                Path(sweeps[s], i => sweeps[s].Expected(i), X, Y), color));
+            if (quantity.Reference is { } reference)
+            {
+                svg.AppendLine(Fmt(
+                    "  <path class=\"series-line\" d=\"{0}\" fill=\"none\" stroke=\"{1}\" stroke-width=\"2\" " +
+                    "stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-dasharray=\"7 5\" opacity=\"0.85\"/>",
+                    Path(sweep, i => reference(sweep, i), X, Y), color));
+            }
         }
 
         // End markers on the model curves, ringed in the surface colour so they stay legible.
@@ -112,13 +123,13 @@ internal static class Co2ChartRenderer
             int last = sweeps[s].Points.Count - 1;
             svg.AppendLine(Fmt(
                 "  <circle cx=\"{0:F1}\" cy=\"{1:F1}\" r=\"4.5\" fill=\"var(--series-{2})\" stroke=\"var(--surface)\" stroke-width=\"2\"/>",
-                X(sweeps[s].Points[last].Ppm), Y(sweeps[s].Points[last].SurfaceTemperature), Slot(s)));
+                X(sweeps[s].Points[last].Ppm), Y(quantity.Model(sweeps[s], last)), Slot(s)));
         }
 
         // Direct labels on the four line ends only - never a value on every point. Where the
         // lines converge the labels are pushed apart and joined to their own line end by a
         // leader, rather than stacked (which detaches them and reads as noise) or overlapped.
-        foreach (var label in PlaceEndLabels(EndLabels(sweeps), Y))
+        foreach (var label in PlaceEndLabels(EndLabels(sweeps, quantity), Y))
         {
             if (label.NeedsLeader)
             {
@@ -132,8 +143,9 @@ internal static class Co2ChartRenderer
             }
 
             svg.AppendLine(Fmt(
-                "  <text x=\"{0}\" y=\"{1:F1}\" class=\"end-label\">{2:F1} K</text>",
-                MarginLeft + PlotWidth + 15, label.LabelY + 1, label.Value));
+                "  <text x=\"{0}\" y=\"{1:F1}\" class=\"end-label\">{2} {3}</text>",
+                MarginLeft + PlotWidth + 15, label.LabelY + 1,
+                label.Value.ToString(quantity.EndLabelFormat, Inv), Escape(quantity.Unit)));
             svg.AppendLine(Fmt(
                 "  <text x=\"{0}\" y=\"{1:F1}\" class=\"end-label-sub\">{2}</text>",
                 MarginLeft + PlotWidth + 15, label.LabelY + 15, label.Note));
@@ -145,9 +157,10 @@ internal static class Co2ChartRenderer
             "  <line id=\"crosshair\" y1=\"{0}\" y2=\"{1}\" stroke=\"var(--axis)\" stroke-width=\"1\" opacity=\"0\"/>",
             MarginTop, MarginTop + PlotHeight));
 
+        var kinds = quantity.HasReference ? new[] { "model", "accepted" } : new[] { "model" };
         for (int s = 0; s < sweeps.Length; s++)
         {
-            foreach (string kind in new[] { "model", "expected" })
+            foreach (string kind in kinds)
             {
                 svg.AppendLine(Fmt(
                     "  <circle class=\"hover-dot\" data-series=\"{0}-{1}\" r=\"4.5\" fill=\"var(--series-{0})\" " +
@@ -162,7 +175,7 @@ internal static class Co2ChartRenderer
         var scale = new ChartScale(MarginLeft, MarginTop, PlotWidth, PlotHeight,
             Width, xMin, xMax, yMin, yMax);
 
-        return Page(sweeps, svg.ToString(), scale);
+        return Page(sweeps, svg.ToString(), scale, quantity);
     }
 
     /// <summary>
@@ -173,13 +186,20 @@ internal static class Co2ChartRenderer
         int Left, int Top, int PlotWidth, int PlotHeight, int ViewBoxWidth,
         double XMin, double XMax, double YMin, double YMax);
 
-    private static IEnumerable<(double Value, string Note, int Slot)> EndLabels(Co2Sweep[] sweeps)
+    private static IEnumerable<(double Value, string Note, int Slot)> EndLabels(
+        Co2Sweep[] sweeps, Co2ChartQuantity quantity)
     {
         for (int s = 0; s < sweeps.Length; s++)
         {
-            int last = sweeps[s].Points.Count - 1;
-            yield return (sweeps[s].Points[last].SurfaceTemperature, "model", Slot(s));
-            yield return (sweeps[s].Expected(last), "log reference", Slot(s));
+            var sweep = sweeps[s];
+            int last = sweep.Points.Count - 1;
+
+            yield return (quantity.Model(sweep, last), "model", Slot(s));
+
+            if (quantity.Reference is { } reference)
+            {
+                yield return (reference(sweep, last), "accepted law", Slot(s));
+            }
         }
     }
 
@@ -245,7 +265,8 @@ internal static class Co2ChartRenderer
         return sb.ToString().TrimEnd();
     }
 
-    private static string Page(Co2Sweep[] sweeps, string svg, ChartScale scale)
+    private static string Page(Co2Sweep[] sweeps, string svg, ChartScale scale,
+        Co2ChartQuantity quantity)
     {
         int last = Co2Sweep.Concentrations.Length - 1;
         var sb = new StringBuilder();
@@ -257,15 +278,15 @@ internal static class Co2ChartRenderer
 
         sb.AppendLine("  <header>");
         sb.AppendLine("    <span class=\"eyebrow\">ClimateColumn · generated by the test suite</span>");
-        sb.AppendLine(Fmt("    <h1>Surface temperature against CO₂, {0:F0} → {1:F0} ppm</h1>",
+        sb.AppendLine(Fmt("    <h1>CO₂ forcing against concentration, {0:F0} → {1:F0} ppm</h1>",
             Co2Sweep.Concentrations[0], Co2Sweep.Concentrations[last]));
         sb.AppendLine("    <p class=\"lede\">Six molecules in eight spectral bands derived from " +
-                      "HITRAN line strengths. Solid is the model. Dashed is <strong>not</strong> " +
-                      "from the line data &mdash; it is the response this same configuration would " +
-                      "give if its forcing followed the accepted 5.35&nbsp;ln(C/C&#8320;) at its " +
-                      "own measured sensitivity, so the two coincide at the calibration point by " +
-                      "construction and separate only where the model&rsquo;s forcing departs from " +
-                      "logarithmic.</p>");
+                      "HITRAN line strengths. Solid is the model&rsquo;s own instantaneous " +
+                      "forcing, measured against the reference equilibrium. Dashed is the accepted " +
+                      "law 5.35&nbsp;ln(C/C&#8320;). Both are radiative forcing in W&nbsp;m&#8315;&sup2;, " +
+                      "so this compares like with like and <strong>borrows nothing</strong> from the " +
+                      "model &mdash; the two meet at the reference concentration because the forcing " +
+                      "there is zero by definition, not by calibration.</p>");
         sb.AppendLine("  </header>");
 
         // Legend - identity never rests on colour alone.
@@ -273,16 +294,25 @@ internal static class Co2ChartRenderer
         sb.AppendLine("    <div class=\"legend\">");
         for (int s = 0; s < sweeps.Length; s++)
         {
-            // The dashed curve is a reference built from the accepted forcing law, not something
-            // taken from the line data, so it must not be labelled as though the model produced it.
-            foreach (var (dash, suffix) in new[]
-                     { ("", " (model)"), (" stroke-dasharray=\"6 4\"", " (logarithmic reference)") })
+            // The dashed curve is the accepted law, not something taken from the line data, so it
+            // must not be labelled as though the model produced it.
+            var keys = new List<(string Dash, string Text)>
+            {
+                ("", Escape(sweeps[s].Label) + " (model)")
+            };
+            if (quantity.HasReference)
+            {
+                keys.Add((" stroke-dasharray=\"6 4\"",
+                    Escape(quantity.ReferenceLabel!) + " (accepted law)"));
+            }
+
+            foreach (var (dash, text) in keys)
             {
                 sb.AppendLine(Fmt(
                     "      <span class=\"legend-item\"><svg class=\"legend-key\" width=\"22\" height=\"10\" aria-hidden=\"true\">" +
                     "<line x1=\"1\" y1=\"5\" x2=\"21\" y2=\"5\" stroke=\"var(--series-{0})\" stroke-width=\"2\" " +
-                    "stroke-linecap=\"round\"{1}/></svg><span>{2}{3}</span></span>",
-                    Slot(s), dash, Escape(sweeps[s].Label), suffix));
+                    "stroke-linecap=\"round\"{1}/></svg><span>{2}</span></span>",
+                    Slot(s), dash, text));
             }
         }
         sb.AppendLine("    </div>");
@@ -291,8 +321,9 @@ internal static class Co2ChartRenderer
         sb.AppendLine("      <div class=\"chart-scroll\">");
         sb.AppendLine(Fmt("        <svg id=\"chart\" viewBox=\"0 0 {0} {1}\" role=\"img\" aria-label=\"{2}\">",
             Width, Height,
-            Escape("Line chart of surface temperature against CO2 concentration. The model runs " +
-                   "close to, but consistently above, the logarithmic reference.")));
+            Escape("Line chart of radiative forcing against CO2 concentration. Both curves rise " +
+                   "logarithmically from zero at the reference concentration, with the model " +
+                   "running consistently about a third above the accepted law.")));
         sb.Append(svg);
         sb.AppendLine("        </svg>");
         sb.AppendLine("      </div>");
@@ -322,11 +353,11 @@ internal static class Co2ChartRenderer
 
         sb.AppendLine("    <div class=\"callouts\">");
         sb.AppendLine("      <div class=\"callout\">");
-        sb.AppendLine(Fmt("        <span class=\"callout-label\">Warming to {0:F0} ppm</span>",
+        sb.AppendLine(Fmt("        <span class=\"callout-label\">Forcing at {0:F0} ppm</span>",
             Co2Sweep.Concentrations[last]));
-        sb.AppendLine(Fmt("        <span class=\"callout-value\">+{0:F2} K</span>", only.Warming(last)));
-        sb.AppendLine(Fmt("        <span class=\"callout-note\">against +{0:F2} K at logarithmic forcing</span>",
-            only.Expected(last) - only.BaseTemperature));
+        sb.AppendLine(Fmt("        <span class=\"callout-value\">{0:F2}</span>", only.Forcings[last]));
+        sb.AppendLine(Fmt("        <span class=\"callout-note\">W/m&sup2;, against {0:F2} from the accepted law</span>",
+            only.AcceptedForcing(last)));
         sb.AppendLine("      </div>");
         sb.AppendLine("      <div class=\"callout\">");
         sb.AppendLine("        <span class=\"callout-label\">Forcing ratio</span>");
@@ -335,9 +366,10 @@ internal static class Co2ChartRenderer
             ratioMax - ratioMin));
         sb.AppendLine("      </div>");
         sb.AppendLine("      <div class=\"callout\">");
-        sb.AppendLine("        <span class=\"callout-label\">Climate sensitivity</span>");
-        sb.AppendLine(Fmt("        <span class=\"callout-value\">{0:F2}</span>", only.Sensitivity));
-        sb.AppendLine("        <span class=\"callout-note\">K per W/m&sup2;, measured at 425 ppm</span>");
+        sb.AppendLine(Fmt("        <span class=\"callout-label\">Warming to {0:F0} ppm</span>",
+            Co2Sweep.Concentrations[last]));
+        sb.AppendLine(Fmt("        <span class=\"callout-value\">+{0:F2} K</span>", only.Warming(last)));
+        sb.AppendLine("        <span class=\"callout-note\">the model&rsquo;s own response, not compared here</span>");
         sb.AppendLine("      </div>");
         sb.AppendLine("    </div>");
 
@@ -350,25 +382,44 @@ internal static class Co2ChartRenderer
                       "absorption inside each &mdash; and that structure is what makes the " +
                       "concentration dependence come out nearly right.</p>");
 
-        sb.AppendLine(Fmt("    <p>Note what the comparison can and cannot test. The reference uses " +
-                      "the model&rsquo;s <em>own</em> sensitivity, {0:F3}&nbsp;K per W/m&sup2;, " +
-                      "taken from its 285&ndash;425&nbsp;ppm step, so response magnitude cancels " +
-                      "out of both curves. What is being tested is the concentration dependence of " +
-                      "the forcing alone. Were the sensitivity itself wrong, both curves would be " +
-                      "wrong together and this figure would look no different.</p>",
-            only.Sensitivity));
+        sb.AppendLine("    <p>Note what this comparison does <em>not</em> do. Both curves are " +
+                      "radiative forcing in W/m&sup2;, so nothing is converted and no sensitivity " +
+                      "is borrowed. An earlier version of this figure plotted temperature against " +
+                      "the same law, which required a sensitivity to convert the law with &mdash; " +
+                      "and the only one to hand was the model&rsquo;s own, making the reference " +
+                      "partly a restatement of the thing it was meant to test.</p>");
+        sb.AppendLine(Fmt("    <p>The alternative was to close it with Stefan&ndash;Boltzmann " +
+                      "instead: at equilibrium <em>S</em>&nbsp;=&nbsp;&epsilon;&sigma;<em>T</em>&#8308;, " +
+                      "so a forcing <em>F</em> gives " +
+                      "<em>T</em>(<em>F</em>)&nbsp;=&nbsp;<em>T</em>&#8320;(<em>S</em>/(<em>S</em>&minus;<em>F</em>))" +
+                      "<sup>1/4</sup> with nothing borrowed. That is model-independent but answers a " +
+                      "different question: it holds the effective emissivity fixed, so it is the " +
+                      "no-feedback Planck response, about 0.30&nbsp;K per W/m&sup2; against this " +
+                      "configuration&rsquo;s {0:F3}. The gap it opens would measure the water-vapour " +
+                      "feedback, not the forcing law. Comparing forcings directly avoids having to " +
+                      "choose.</p>", only.Sensitivity));
+        sb.AppendLine(Fmt("    <p>The model&rsquo;s own response is still here &mdash; " +
+                      "+{0:F2}&nbsp;K to {1:F0}&nbsp;ppm, at {2:F3}&nbsp;K per W/m&sup2; measured " +
+                      "at 425&nbsp;ppm &mdash; but as an output rather than as something held " +
+                      "against a reference. The temperature column is in the table below, and the " +
+                      "WinForms app plots it.</p>",
+            only.Warming(last), Co2Sweep.Concentrations[last], only.Sensitivity));
         sb.AppendLine("  </section>");
 
         // Table view - the WCAG-clean twin of the chart.
         sb.AppendLine("  <section class=\"card\">");
         sb.AppendLine("    <div class=\"table-scroll\">");
         sb.AppendLine("      <table>");
-        sb.AppendLine("        <caption>Every plotted value, straight from the model. Temperatures in K.</caption>");
+        sb.AppendLine("        <caption>Every plotted value, straight from the model. Forcings in " +
+                      "W/m&sup2; against the reference equilibrium; temperature in K.</caption>");
         sb.AppendLine("        <thead><tr><th scope=\"col\">CO₂ (ppm)</th>");
         foreach (var s in sweeps)
         {
-            sb.AppendLine(Fmt("          <th scope=\"col\">dry τ</th><th scope=\"col\">{0}</th>" +
-                              "<th scope=\"col\">Logarithmic reference</th>",
+            sb.AppendLine(Fmt("          <th scope=\"col\">dry τ</th>" +
+                              "<th scope=\"col\">F, {0}</th>" +
+                              "<th scope=\"col\">F, 5.35 ln(C/C₀)</th>" +
+                              "<th scope=\"col\">ratio</th>" +
+                              "<th scope=\"col\">T<sub>s</sub></th>",
                 Escape(s.Label)));
         }
         sb.AppendLine("        </tr></thead>");
@@ -378,8 +429,14 @@ internal static class Co2ChartRenderer
             sb.Append(Fmt("          <tr><td>{0:N0}</td>", Co2Sweep.Concentrations[i]));
             foreach (var s in sweeps)
             {
-                sb.Append(Fmt("<td>{0:F3}</td><td>{1:F3}</td><td>{2:F3}</td>",
-                    s.Points[i].DryOpticalDepth, s.Points[i].SurfaceTemperature, s.Expected(i)));
+                double accepted = s.AcceptedForcing(i);
+                string ratio = Math.Abs(accepted) > 1e-9
+                    ? (s.Forcings[i] / accepted).ToString("F2", Inv)
+                    : "&mdash;";
+
+                sb.Append(Fmt("<td>{0:F3}</td><td>{1:F3}</td><td>{2:F3}</td><td>{3}</td><td>{4:F3}</td>",
+                    s.Points[i].DryOpticalDepth, s.Forcings[i], accepted, ratio,
+                    s.Points[i].SurfaceTemperature));
             }
             sb.AppendLine("</tr>");
         }
@@ -415,16 +472,14 @@ internal static class Co2ChartRenderer
         sb.AppendLine("  </section>");
 
         sb.AppendLine("  <footer>");
-        sb.AppendLine(Fmt("    Forcings are instantaneous and measured against the {0:F0} ppm equilibrium, " +
-                      "the only definition comparable to 5.35 ln(C/C₀). Each expectation curve uses " +
-                      "its own configuration's d<em>T</em>/d<em>F</em> — {1} — measured at the " +
-                      "calibration point.",
-            Co2Sweep.Concentrations[0],
-            string.Join(" and ", sweeps.Select(s => s.Sensitivity.ToString("F3", Inv))) +
-            " K per W/m²"));
+        sb.AppendLine(Fmt("    Forcings are instantaneous and measured against the {0:F0} ppm " +
+                      "equilibrium, the only definition comparable to 5.35 ln(C/C₀). Both plotted " +
+                      "curves are forcing in W/m², so nothing is converted and no sensitivity is " +
+                      "borrowed from the model.",
+            Co2Sweep.Concentrations[0]));
         sb.AppendLine("  </footer>");
 
-        sb.AppendLine(HoverData(sweeps, scale));
+        sb.AppendLine(HoverData(sweeps, scale, quantity));
         sb.AppendLine("</div>");
         sb.AppendLine(HoverScript());
 
@@ -435,32 +490,41 @@ internal static class Co2ChartRenderer
     /// The series values and plot geometry, as JSON in a script tag. Kept out of a JS string
     /// literal so nothing has to be escaped twice.
     /// </summary>
-    private static string HoverData(Co2Sweep[] sweeps, ChartScale scale)
+    private static string HoverData(Co2Sweep[] sweeps, ChartScale scale, Co2ChartQuantity quantity)
     {
         var series = new List<string>();
         for (int s = 0; s < sweeps.Length; s++)
         {
-            series.Add(Fmt(
-                "{{\"id\":\"{0}-model\",\"label\":\"{1}\",\"slot\":{0},\"dash\":false,\"values\":[{2}]}}",
-                Slot(s), Escape(sweeps[s].Label),
-                string.Join(",", sweeps[s].Points.Select(p => p.SurfaceTemperature.ToString("F4", Inv)))));
+            var sweep = sweeps[s];
+            int n = sweep.Points.Count;
 
             series.Add(Fmt(
-                "{{\"id\":\"{0}-expected\",\"label\":\"{1} (logarithmic reference)\",\"slot\":{0},\"dash\":true,\"values\":[{2}]}}",
-                Slot(s), Escape(sweeps[s].Label),
-                string.Join(",", Enumerable.Range(0, sweeps[s].Points.Count)
-                    .Select(i => sweeps[s].Expected(i).ToString("F4", Inv)))));
+                "{{\"id\":\"{0}-model\",\"label\":\"{1}\",\"slot\":{0},\"dash\":false,\"values\":[{2}]}}",
+                Slot(s), Escape(sweep.Label),
+                string.Join(",", Enumerable.Range(0, n)
+                    .Select(i => quantity.Model(sweep, i).ToString("F4", Inv)))));
+
+            if (quantity.Reference is { } reference)
+            {
+                series.Add(Fmt(
+                    "{{\"id\":\"{0}-accepted\",\"label\":\"{1}\",\"slot\":{0},\"dash\":true,\"values\":[{2}]}}",
+                    Slot(s), Escape(quantity.ReferenceLabel!),
+                    string.Join(",", Enumerable.Range(0, n)
+                        .Select(i => reference(sweep, i).ToString("F4", Inv)))));
+            }
         }
 
         return Fmt(
             "  <script id=\"chart-data\" type=\"application/json\">" +
-            "{{\"ppm\":[{0}],\"scale\":{{\"left\":{1},\"top\":{2},\"w\":{3},\"h\":{4},\"vbw\":{5}," +
+            "{{\"ppm\":[{0}],\"unit\":\"{11}\"," +
+            "\"scale\":{{\"left\":{1},\"top\":{2},\"w\":{3},\"h\":{4},\"vbw\":{5}," +
             "\"xMin\":{6:F1},\"xMax\":{7:F1},\"yMin\":{8:F1},\"yMax\":{9:F1}}},\"series\":[{10}]}}" +
             "</script>",
             string.Join(",", Co2Sweep.Concentrations.Select(c => c.ToString("F0", Inv))),
             scale.Left, scale.Top, scale.PlotWidth, scale.PlotHeight, scale.ViewBoxWidth,
             scale.XMin, scale.XMax, scale.YMin, scale.YMax,
-            string.Join(",", series));
+            string.Join(",", series),
+            Escape(quantity.Unit));
     }
 
     /// <summary>
@@ -471,7 +535,7 @@ internal static class Co2ChartRenderer
         <script>
           (() => {
             const data = JSON.parse(document.getElementById('chart-data').textContent);
-            const { ppm, scale, series } = data;
+            const { ppm, scale, series, unit } = data;
             const svg = document.getElementById('chart');
             const crosshair = document.getElementById('crosshair');
             const hit = document.getElementById('hit');
@@ -515,7 +579,7 @@ internal static class Co2ChartRenderer
                       'stroke="var(--series-' + s.slot + ')" stroke-width="2" stroke-linecap="round"' +
                       (s.dash ? ' stroke-dasharray="5 3"' : '') + '/></svg>' +
                     '<span>' + s.label + '</span>' +
-                    '<span class="tip-val">' + s.values[idx].toFixed(2) + ' K</span>' +
+                    '<span class="tip-val">' + s.values[idx].toFixed(2) + ' ' + unit + '</span>' +
                   '</div>').join('');
 
               tip.classList.add('on');

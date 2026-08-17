@@ -17,6 +17,7 @@ public sealed class MainForm : Form
     private readonly ToolStripStatusLabel _statusLabel = new();
     private readonly ToolStripButton _saveButton = new();
     private readonly ToolStripButton _themeButton = new();
+    private readonly ToolStripButton _quantityButton = new();
     private readonly SplitContainer _split = new();
 
     private Co2Sweep[] _sweeps = Array.Empty<Co2Sweep>();
@@ -67,8 +68,23 @@ public sealed class MainForm : Form
             ApplyTheme();
         };
 
+        // Forcing is the default view: 5.35 ln(C/C0) is a statement about forcing, so comparing
+        // forcings borrows nothing from the model. The temperature view has no reference curve
+        // for the same reason - drawing one would need the model's own sensitivity.
+        _quantityButton.Text = "Show temperature";
+        _quantityButton.Click += (_, _) =>
+        {
+            bool toForcing = ReferenceEquals(_chart.Quantity, Co2ChartQuantity.SurfaceTemperature);
+            _chart.Quantity = toForcing
+                ? Co2ChartQuantity.Forcing
+                : Co2ChartQuantity.SurfaceTemperature;
+            _quantityButton.Text = toForcing ? "Show temperature" : "Show forcing";
+        };
+
         var toolbar = new ToolStrip { Dock = DockStyle.Top, GripStyle = ToolStripGripStyle.Hidden };
         toolbar.Items.Add(_saveButton);
+        toolbar.Items.Add(new ToolStripSeparator());
+        toolbar.Items.Add(_quantityButton);
         toolbar.Items.Add(new ToolStripSeparator());
         toolbar.Items.Add(_themeButton);
         return toolbar;
@@ -90,27 +106,20 @@ public sealed class MainForm : Form
 
     private async Task RunSweepsAsync()
     {
-        // Co2Sweep.Run marches the column to equilibrium at every concentration, which takes
-        // a few seconds; keep it off the UI thread. The spectral configuration is slower again -
-        // eight derived bands with four g-points each - and is null when the HITRAN line lists
-        // have not been fetched, in which case the chart shows the two grey configurations.
-        var sweeps = await Task.Run(() =>
-        {
-            var all = new List<Co2Sweep>
-            {
-                Co2Sweep.NoFeedback(),
-                Co2Sweep.WithWaterVapourFeedback()
-            };
-
-            var spectral = Co2Sweep.SpectralBands();
-            if (spectral is not null) all.Add(spectral);
-
-            return all.ToArray();
-        });
+        // Co2Sweep.ForChart marches the column to equilibrium at every concentration, which takes
+        // several seconds - eight derived bands with four g-points each - so keep it off the UI
+        // thread. It returns nothing when the HITRAN line lists have not been fetched.
+        var sweeps = await Task.Run(Co2Sweep.ForChart);
 
         _sweeps = sweeps;
         _chart.SetSweeps(sweeps);
         FillGrid();
+
+        if (sweeps.Length == 0)
+        {
+            _statusLabel.Text = "No HITRAN data — run scripts/fetch-hitran.ps1 -Molecule all.";
+            return;
+        }
 
         _saveButton.Enabled = true;
         _statusLabel.Text = Summary();
@@ -120,8 +129,8 @@ public sealed class MainForm : Form
     {
         int last = Co2Sweep.Concentrations.Length - 1;
         var parts = _sweeps.Select(s => string.Format(CultureInfo.InvariantCulture,
-            "{0}: +{1:F2} K (expected +{2:F2} K)",
-            s.Label, s.Warming(last), s.Expected(last) - s.BaseTemperature));
+            "{0}: {1:F3} vs {2:F3} W/m² accepted  (+{3:F2} K)",
+            s.Label, s.Forcings[last], s.AcceptedForcing(last), s.Warming(last)));
 
         return string.Format(CultureInfo.InvariantCulture, "{0:F0} → {1:F0} ppm — ",
             Co2Sweep.Concentrations[0], Co2Sweep.Concentrations[last]) + string.Join("   ·   ", parts);
@@ -136,8 +145,9 @@ public sealed class MainForm : Form
         foreach (var sweep in _sweeps)
         {
             _grid.Columns.Add("tau" + sweep.Label, "dry τ");
-            _grid.Columns.Add("model" + sweep.Label, sweep.Label);
-            _grid.Columns.Add("expected" + sweep.Label, "Expected");
+            _grid.Columns.Add("forcing" + sweep.Label, "F model (W/m²)");
+            _grid.Columns.Add("accepted" + sweep.Label, "5.35 ln(C/C₀)");
+            _grid.Columns.Add("model" + sweep.Label, "T_s (K)");
         }
 
         foreach (var column in _grid.Columns.Cast<DataGridViewColumn>())
@@ -152,8 +162,9 @@ public sealed class MainForm : Form
             foreach (var sweep in _sweeps)
             {
                 cells.Add(sweep.Points[i].DryOpticalDepth.ToString("F3", CultureInfo.InvariantCulture));
+                cells.Add(sweep.Forcings[i].ToString("F3", CultureInfo.InvariantCulture));
+                cells.Add(sweep.AcceptedForcing(i).ToString("F3", CultureInfo.InvariantCulture));
                 cells.Add(sweep.Points[i].SurfaceTemperature.ToString("F3", CultureInfo.InvariantCulture));
-                cells.Add(sweep.Expected(i).ToString("F3", CultureInfo.InvariantCulture));
             }
             _grid.Rows.Add(cells.ToArray());
         }
@@ -172,8 +183,10 @@ public sealed class MainForm : Form
 
         int i = index.Value;
         var parts = _sweeps.Select(s => string.Format(CultureInfo.InvariantCulture,
-            "{0}: {1:F3} K (expected {2:F3} K, over by {3:F3})",
-            s.Label, s.Points[i].SurfaceTemperature, s.Expected(i), s.Overshoot(i)));
+            "{0}: F = {1:F3} W/m² vs {2:F3} accepted (ratio {3:F2})  ·  T_s = {4:F3} K",
+            s.Label, s.Forcings[i], s.AcceptedForcing(i),
+            Math.Abs(s.AcceptedForcing(i)) > 1e-9 ? s.Forcings[i] / s.AcceptedForcing(i) : double.NaN,
+            s.Points[i].SurfaceTemperature));
 
         _statusLabel.Text = string.Format(CultureInfo.InvariantCulture, "{0:N0} ppm — ",
             Co2Sweep.Concentrations[i]) + string.Join("   ·   ", parts);

@@ -17,7 +17,7 @@ public static class Co2ChartExport
     /// exercises the hover drawing that is otherwise only reachable through the live UI.
     /// </param>
     public static void SavePng(string path, IReadOnlyList<Co2Sweep> sweeps, ChartTheme theme,
-        int width, int height, int? hoverIndex = null)
+        int width, int height, int? hoverIndex = null, Co2ChartQuantity? quantity = null)
     {
         width = Math.Max(700, width);
         height = Math.Max(450, height);
@@ -25,7 +25,8 @@ public static class Co2ChartExport
         using var bitmap = new Bitmap(width, height);
         using (var g = Graphics.FromImage(bitmap))
         {
-            Co2ChartPainter.Paint(g, new Rectangle(0, 0, width, height), sweeps, theme, hoverIndex);
+            Co2ChartPainter.Paint(g, new Rectangle(0, 0, width, height), sweeps, theme, hoverIndex,
+                quantity ?? Co2ChartQuantity.Forcing);
         }
 
         string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
