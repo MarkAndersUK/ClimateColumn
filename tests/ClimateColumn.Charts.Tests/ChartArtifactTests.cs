@@ -29,11 +29,27 @@ public class ChartArtifactTests
     /// The two calibrated configurations at equilibrium. Computed once: this is 2 x 9 marches to
     /// equilibrium and by far the slowest thing here.
     /// </summary>
-    private static Co2Sweep[] Sweeps => _sweeps ??= new[]
+    private static Co2Sweep[] Sweeps
     {
-        Co2Sweep.NoFeedback(),
-        Co2Sweep.WithWaterVapourFeedback()
-    };
+        get
+        {
+            if (_sweeps is not null) return _sweeps;
+
+            var all = new List<Co2Sweep>
+            {
+                Co2Sweep.NoFeedback(),
+                Co2Sweep.WithWaterVapourFeedback()
+            };
+
+            // Null unless the HITRAN line lists have been fetched, so the artifact carries two
+            // curves offline and three with the data.
+            var spectral = Co2Sweep.SpectralBands();
+            if (spectral is not null) all.Add(spectral);
+
+            _sweeps = all.ToArray();
+            return _sweeps;
+        }
+    }
 
     /// <summary>
     /// Resolves <c>artifacts/</c> beside the solution, so the PNG lands next to the HTML chart

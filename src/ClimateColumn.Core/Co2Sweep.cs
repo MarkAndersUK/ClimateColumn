@@ -122,6 +122,71 @@ public sealed class Co2Sweep
         "--co2-fraction 0.06",
         () => new ModelOptions { Co2AbsorberFraction = 0.06 });
 
+    /// <summary>
+    /// A configuration driven by spectral bands derived from HITRAN line data, or null when the
+    /// line lists have not been fetched.
+    /// </summary>
+    /// <remarks>
+    /// The other two configurations are the calibrated single-band absorber: one grey optical depth
+    /// standing in for the whole longwave spectrum, with a CO2 share tuned until the forcing matched
+    /// an accepted value. This one instead puts six molecules into twelve bands derived from their
+    /// own line strengths, each band carrying its own opacity, vertical profile and measured line
+    /// structure - so its CO2 response comes out of the spectroscopy rather than being calibrated
+    /// in.
+    ///
+    /// Two honest caveats. The absorber amounts are scaled to reach an Earth-like present-day
+    /// surface temperature, exactly as the other two configurations were, so the three are
+    /// comparable in base state and differ in how they represent absorption. And the continuum is
+    /// added rather than derived: HITRAN's line lists do not contain it, and without it the derived
+    /// window is perfectly transparent and caps the greenhouse effect no matter how much gas is
+    /// added.
+    ///
+    /// Returns null rather than throwing so the charts can simply show two curves when the data is
+    /// absent.
+    /// </remarks>
+    public static Co2Sweep? SpectralBands()
+    {
+        // Relative amounts per gas, then a common scale chosen for the base state.
+        var recipe = new (string File, AbsorberKind Kind, double Share, bool Co2)[]
+        {
+            (HitranLineList.WaterVapourRotational, AbsorberKind.WaterVapour, 6.0, false),
+            (HitranLineList.WaterVapourBending,    AbsorberKind.WaterVapour, 2.0, false),
+            (HitranLineList.Co2FifteenMicron,      AbsorberKind.WellMixed,   2.0, true),
+            (HitranLineList.OzoneNineSixMicron,    AbsorberKind.Ozone,       0.5, false),
+            (HitranLineList.MethaneSevenSevenMicron, AbsorberKind.WellMixed, 0.2, false),
+            (HitranLineList.NitrousOxideSevenEightMicron, AbsorberKind.WellMixed, 0.1, false)
+        };
+
+        const double scale = 13.0;
+
+        var molecules = new List<BandDerivation.Molecule>();
+        foreach (var (file, kind, share, co2) in recipe)
+        {
+            string? path = HitranLineList.DefaultPath(file);
+            if (path is null) return null;
+
+            molecules.Add(new BandDerivation.Molecule(
+                HitranLineList.Load(path, minimumIntensity: 1e-26),
+                kind, share * scale, co2, file));
+        }
+
+        var bands = BandDerivation.DeriveShared(
+            molecules, fromWavenumber: 100, toWavenumber: 2000, bandCount: 8,
+            samples: 80_000, gPoints: 4, wingCutoff: 15.0,
+            continuumOpticalDepth: 1.2 * scale);
+
+        return Run(
+            "Derived from HITRAN bands",
+            "see Co2Sweep.SpectralBands - 6 molecules, 8 derived bands",
+            () => new ModelOptions
+            {
+                SegmentCount = 30,
+                Bands = bands.ToArray(),
+                WaterVapourOpticalDepth = 1.0,
+                OzoneFraction = 0.3
+            });
+    }
+
     /// <summary>The configuration used for the README's water-vapour-feedback calibration.</summary>
     public static Co2Sweep WithWaterVapourFeedback() => Run(
         "With water vapour feedback",

@@ -608,6 +608,35 @@ Practically, the agreement is under 0.01 K at the 425 ppm calibration point, 0.3
 unsound** unless you recalibrate `--co2-fraction` at the concentration you actually care
 about.
 
+#### The spectral configuration on the chart
+
+`Co2Sweep.SpectralBands()` adds a third curve driven by six molecules in eight bands derived from
+their own line strengths — so its CO₂ response comes out of the spectroscopy rather than being
+calibrated in. It returns null when the line lists have not been fetched, in which case the charts
+simply show two curves.
+
+Over 285 → 1000 ppm:
+
+| | warming | log expectation | overshoot |
+|---|---|---|---|
+| Grey, no vapour feedback | +4.60 K | +2.85 K | 1.75 K |
+| Grey, vapour feedback | +6.52 K | +4.46 K | 2.06 K |
+| **Derived from HITRAN bands** | **+5.69 K** | +4.29 K | **1.40 K** |
+
+The spectral configuration's overshoot is the smallest of the three. Representing real line
+structure makes the concentration dependence **more nearly logarithmic** — which is what real gases
+do, and it is the clearest payoff in the whole model for having done the spectral work rather than
+tuning a grey knob. It is still an overshoot, so the model has not become right, only less wrong for
+a reason that is physical rather than fitted.
+
+Two caveats, the same ones the derivation carries. Its absorber amounts are scaled to reach an
+Earth-like base state, exactly as the two grey configurations were, so the three are comparable in
+base state and differ in how they represent absorption. And its continuum is added rather than
+derived, because HITRAN's line lists do not contain one.
+
+The spectral sweep is nine equilibria at eight bands with four g-points each, which takes about
+30 seconds — most of the test suite's runtime.
+
 #### Plotting it
 
 The sweep is `Co2Sweep` in Core, and two front ends draw it.
@@ -791,8 +820,9 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 - **Band count and the absorber amounts are still chosen.** Everything else follows from the
   spectrum, but how finely to band and how much of each gas to put in it do not — and the amounts
   used in the README are illustrative, not fitted to observations.
-- **The charts still show the grey model.** `Co2Sweep`'s two configurations are the calibrated
-  single-band absorber; none of the spectral work above feeds the published figures yet.
+- **The spectral chart series is scaled, not fitted.** Its absorber amounts reach an Earth-like base
+  state by construction rather than from observed concentrations, and its continuum is added rather
+  than derived, so its CO₂ response is spectroscopically grounded but not an independent estimate.
 - **Shortwave is still a single grey channel.** All the spectral work is on the longwave side;
   solar absorption is a prescribed fraction split by air mass and a Chapman profile.
 - **The diffusivity is band-independent.** $D = 2$ is exact in the optically *thin* limit,

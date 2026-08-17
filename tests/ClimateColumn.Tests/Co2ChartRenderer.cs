@@ -19,9 +19,10 @@ internal static class Co2ChartRenderer
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-    // Categorical slots 1 and 2, light / dark steps.
+    // Categorical slots 1-3, light / dark steps. Slot 3 sits below 3:1 on the light surface, so
+    // the relief rule applies and is met: direct end labels plus the table view.
     private static readonly (string Light, string Dark)[] SeriesColors =
-        { ("#2a78d6", "#3987e5"), ("#eb6834", "#d95926") };
+        { ("#2a78d6", "#3987e5"), ("#eb6834", "#d95926"), ("#1baf7a", "#199e70") };
 
     private const int Width = 900, Height = 470;
     private const int MarginTop = 22, MarginRight = 138, MarginBottom = 54, MarginLeft = 62;
@@ -30,9 +31,13 @@ internal static class Co2ChartRenderer
 
     private static readonly double[] XTicks = { 285, 400, 500, 600, 700, 800, 900, 1000 };
 
-    public static string Render(Co2Sweep noFeedback, Co2Sweep withFeedback)
+    /// <summary>
+    /// Renders any number of sweeps. Two are the calibrated grey configurations; a third, when the
+    /// HITRAN line lists have been fetched, is driven by derived spectral bands.
+    /// </summary>
+    public static string Render(params Co2Sweep[] sweeps)
     {
-        var sweeps = new[] { noFeedback, withFeedback };
+        if (sweeps.Length == 0) throw new ArgumentException("at least one sweep is needed.");
 
         double xMin = Co2Sweep.Concentrations[0];
         double xMax = Co2Sweep.Concentrations[^1];
@@ -88,7 +93,7 @@ internal static class Co2ChartRenderer
         // Lines: 2px, round join and cap. Dashed marks the logarithmic expectation.
         for (int s = 0; s < sweeps.Length; s++)
         {
-            string color = Fmt("var(--series-{0})", s + 1);
+            string color = Fmt("var(--series-{0})", Slot(s));
 
             svg.AppendLine(Fmt(
                 "  <path class=\"series-line\" d=\"{0}\" fill=\"none\" stroke=\"{1}\" stroke-width=\"2\" " +
@@ -107,7 +112,7 @@ internal static class Co2ChartRenderer
             int last = sweeps[s].Points.Count - 1;
             svg.AppendLine(Fmt(
                 "  <circle cx=\"{0:F1}\" cy=\"{1:F1}\" r=\"4.5\" fill=\"var(--series-{2})\" stroke=\"var(--surface)\" stroke-width=\"2\"/>",
-                X(sweeps[s].Points[last].Ppm), Y(sweeps[s].Points[last].SurfaceTemperature), s + 1));
+                X(sweeps[s].Points[last].Ppm), Y(sweeps[s].Points[last].SurfaceTemperature), Slot(s)));
         }
 
         // Direct labels on the four line ends only - never a value on every point. Where the
@@ -146,7 +151,7 @@ internal static class Co2ChartRenderer
             {
                 svg.AppendLine(Fmt(
                     "  <circle class=\"hover-dot\" data-series=\"{0}-{1}\" r=\"4.5\" fill=\"var(--series-{0})\" " +
-                    "stroke=\"var(--surface)\" stroke-width=\"2\" opacity=\"0\"/>", s + 1, kind));
+                    "stroke=\"var(--surface)\" stroke-width=\"2\" opacity=\"0\"/>", Slot(s), kind));
             }
         }
 
@@ -173,8 +178,8 @@ internal static class Co2ChartRenderer
         for (int s = 0; s < sweeps.Length; s++)
         {
             int last = sweeps[s].Points.Count - 1;
-            yield return (sweeps[s].Points[last].SurfaceTemperature, "model", s + 1);
-            yield return (sweeps[s].Expected(last), "expected", s + 1);
+            yield return (sweeps[s].Points[last].SurfaceTemperature, "model", Slot(s));
+            yield return (sweeps[s].Expected(last), "expected", Slot(s));
         }
     }
 
@@ -270,7 +275,7 @@ internal static class Co2ChartRenderer
                     "      <span class=\"legend-item\"><svg class=\"legend-key\" width=\"22\" height=\"10\" aria-hidden=\"true\">" +
                     "<line x1=\"1\" y1=\"5\" x2=\"21\" y2=\"5\" stroke=\"var(--series-{0})\" stroke-width=\"2\" " +
                     "stroke-linecap=\"round\"{1}/></svg><span>{2}{3}</span></span>",
-                    s + 1, dash, Escape(sweeps[s].Label), suffix));
+                    Slot(s), dash, Escape(sweeps[s].Label), suffix));
             }
         }
         sb.AppendLine("    </div>");
@@ -407,12 +412,12 @@ internal static class Co2ChartRenderer
         {
             series.Add(Fmt(
                 "{{\"id\":\"{0}-model\",\"label\":\"{1}\",\"slot\":{0},\"dash\":false,\"values\":[{2}]}}",
-                s + 1, Escape(sweeps[s].Label),
+                Slot(s), Escape(sweeps[s].Label),
                 string.Join(",", sweeps[s].Points.Select(p => p.SurfaceTemperature.ToString("F4", Inv)))));
 
             series.Add(Fmt(
                 "{{\"id\":\"{0}-expected\",\"label\":\"{1}, expected\",\"slot\":{0},\"dash\":true,\"values\":[{2}]}}",
-                s + 1, Escape(sweeps[s].Label),
+                Slot(s), Escape(sweeps[s].Label),
                 string.Join(",", Enumerable.Range(0, sweeps[s].Points.Count)
                     .Select(i => sweeps[s].Expected(i).ToString("F4", Inv)))));
         }
@@ -521,7 +526,7 @@ internal static class Co2ChartRenderer
             --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
             --grid: #e1e0d9; --axis: #c3c2b7;
             --hairline: rgba(11,11,11,0.10);
-            --series-1: #2a78d6; --series-2: #eb6834;
+            --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
             --warn-wash: rgba(235,104,52,0.08); --warn-edge: rgba(235,104,52,0.32);
           }
           @media (prefers-color-scheme: dark) {
@@ -531,7 +536,7 @@ internal static class Co2ChartRenderer
               --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
               --grid: #2c2c2a; --axis: #383835;
               --hairline: rgba(255,255,255,0.10);
-              --series-1: #3987e5; --series-2: #d95926;
+              --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
               --warn-wash: rgba(217,89,38,0.12); --warn-edge: rgba(217,89,38,0.40);
             }
           }
@@ -541,7 +546,7 @@ internal static class Co2ChartRenderer
             --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
             --grid: #2c2c2a; --axis: #383835;
             --hairline: rgba(255,255,255,0.10);
-            --series-1: #3987e5; --series-2: #d95926;
+            --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
             --warn-wash: rgba(217,89,38,0.12); --warn-edge: rgba(217,89,38,0.40);
           }
           * { box-sizing: border-box; }
@@ -634,6 +639,13 @@ internal static class Co2ChartRenderer
           }
         </style>
         """;
+
+    /// <summary>
+    /// Categorical slot for a series, 1-based. Wraps rather than generating a colour: a ninth
+    /// series would be indistinguishable from an existing one under colour-vision deficiency, and
+    /// this chart never has more than three.
+    /// </summary>
+    private static int Slot(int series) => (series % SeriesColors.Length) + 1;
 
     private static string Fmt(string format, params object[] args) =>
         string.Format(Inv, format, args);

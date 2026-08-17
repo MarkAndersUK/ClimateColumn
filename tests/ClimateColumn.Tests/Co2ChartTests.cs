@@ -22,14 +22,27 @@ public class Co2ChartTests
     private static Co2Sweep _noFeedback = null!;
     private static Co2Sweep _withFeedback = null!;
 
+    private static Co2Sweep? _spectral;
+
     [ClassInitialize]
     public static void RunSweeps(TestContext _)
     {
         _noFeedback = Co2Sweep.NoFeedback();
         _withFeedback = Co2Sweep.WithWaterVapourFeedback();
+
+        // Null when the HITRAN line lists have not been fetched, in which case the chart simply
+        // shows the two grey configurations.
+        _spectral = Co2Sweep.SpectralBands();
     }
 
+    /// <summary>The grey configurations, which the assertions below are about.</summary>
     private static IEnumerable<Co2Sweep> Sweeps => new[] { _noFeedback, _withFeedback };
+
+    /// <summary>Everything that goes on the chart, spectral series included when available.</summary>
+    private static Co2Sweep[] Plotted =>
+        _spectral is null
+            ? new[] { _noFeedback, _withFeedback }
+            : new[] { _noFeedback, _withFeedback, _spectral };
 
     private static int Last => Co2Sweep.Concentrations.Length - 1;
 
@@ -167,12 +180,12 @@ public class Co2ChartTests
     [TestMethod]
     public void RendersTheChartToTheArtifactsFolder()
     {
-        string html = Co2ChartRenderer.Render(_noFeedback, _withFeedback);
+        string html = Co2ChartRenderer.Render(Plotted);
 
         Assert.IsTrue(html.Contains("<svg id=\"chart\"", StringComparison.Ordinal),
             "the rendered page should contain the chart");
-        Assert.AreEqual(4, CountOccurrences(html, "<path class=\"series-line\""),
-            "two model curves and two expectation curves");
+        Assert.AreEqual(2 * Plotted.Length, CountOccurrences(html, "<path class=\"series-line\""),
+            "a model curve and an expectation curve per plotted configuration");
         Assert.IsFalse(html.Contains("NaN", StringComparison.Ordinal),
             "a NaN in the output means a coordinate or a ratio failed to compute");
 
@@ -199,7 +212,7 @@ public class Co2ChartTests
     [TestMethod]
     public void EndLabelsDoNotOverlapAndStayInsideTheFigure()
     {
-        string html = Co2ChartRenderer.Render(_noFeedback, _withFeedback);
+        string html = Co2ChartRenderer.Render(Plotted);
 
         var ys = new List<double>();
         int at = 0;
@@ -213,7 +226,7 @@ public class Co2ChartTests
             at += 1;
         }
 
-        Assert.AreEqual(4, ys.Count, "one label per line end");
+        Assert.AreEqual(2 * Plotted.Length, ys.Count, "one label per line end");
 
         ys.Sort();
         for (int i = 1; i < ys.Count; i++)
@@ -240,7 +253,7 @@ public class Co2ChartTests
     [TestMethod]
     public void HoverDataMatchesTheRenderedSeries()
     {
-        string html = Co2ChartRenderer.Render(_noFeedback, _withFeedback);
+        string html = Co2ChartRenderer.Render(Plotted);
 
         const string open = "<script id=\"chart-data\" type=\"application/json\">";
         int start = html.IndexOf(open, StringComparison.Ordinal);
@@ -257,8 +270,8 @@ public class Co2ChartTests
             "every swept concentration should be in the hover data");
 
         var series = root.GetProperty("series");
-        Assert.AreEqual(4, series.GetArrayLength(),
-            "two model series and two expectation series");
+        Assert.AreEqual(2 * Plotted.Length, series.GetArrayLength(),
+            "a model series and an expectation series per plotted configuration");
 
         foreach (var entry in series.EnumerateArray())
         {

@@ -44,7 +44,20 @@ public static class Program
                 int height = Int(args, "--height", 700);
 
                 Console.WriteLine("Running the column to equilibrium at each concentration…");
-                var sweeps = new[] { Co2Sweep.NoFeedback(), Co2Sweep.WithWaterVapourFeedback() };
+
+                var sweepList = new List<Co2Sweep>
+                {
+                    Co2Sweep.NoFeedback(),
+                    Co2Sweep.WithWaterVapourFeedback()
+                };
+
+                // Null unless the HITRAN line lists have been fetched.
+                var spectral = Co2Sweep.SpectralBands();
+                if (spectral is not null) sweepList.Add(spectral);
+                else Console.WriteLine("  (no HITRAN data - run scripts/fetch-hitran.ps1 -Molecule all");
+                if (spectral is null) Console.WriteLine("   to add the spectral series)");
+
+                var sweeps = sweepList.ToArray();
 
                 int? hover = null;
                 string? hoverPpm = Value(args, "--hover");

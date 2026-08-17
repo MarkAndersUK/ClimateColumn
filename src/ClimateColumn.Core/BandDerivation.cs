@@ -175,6 +175,22 @@ public static class BandDerivation
     /// correct. This is the classic difficulty in correlated-k and it is not solved here, only
     /// bounded: re-derive if a concentration moves by more than a factor of a few.
     /// </remarks>
+    /// <param name="continuumOpticalDepth">
+    /// Column optical depth of the water-vapour continuum, spread across the bands overlapping
+    /// <paramref name="continuumFrom"/> to <paramref name="continuumTo"/> in proportion to how much
+    /// of that interval each covers.
+    /// </param>
+    /// <param name="continuumFrom">Lower edge of the continuum's range, cm^-1.</param>
+    /// <param name="continuumTo">Upper edge, cm^-1.</param>
+    /// <remarks>
+    /// The continuum is not optional in any physical sense. Line data alone leaves the atmospheric
+    /// window perfectly transparent, which caps the greenhouse effect however much gas is added -
+    /// reaching an Earth-like surface temperature from lines alone needs absorber amounts about
+    /// twenty-five times larger than anything reasonable, because the window simply lets the
+    /// radiation out. What closes it over the humid tropics is the continuum, and HITRAN's line
+    /// lists do not contain it: it is smooth absorption between the lines, described separately.
+    /// So it has to be added here rather than derived, and its default range is the window itself.
+    /// </remarks>
     public static IReadOnlyList<SpectralBand> DeriveShared(
         IReadOnlyList<Molecule> molecules,
         double fromWavenumber,
@@ -183,7 +199,10 @@ public static class BandDerivation
         int samples = 120_000,
         int gPoints = 16,
         double wingCutoff = 25.0,
-        double referenceTemperature = 260.0)
+        double referenceTemperature = 260.0,
+        double continuumOpticalDepth = 0.0,
+        double continuumFrom = 800.0,
+        double continuumTo = 1250.0)
     {
         if (molecules.Count == 0) throw new ArgumentException("at least one molecule is needed.");
         if (bandCount < 1) throw new ArgumentException("bandCount must be >= 1.");
@@ -208,6 +227,19 @@ public static class BandDerivation
 
         double[] edges = PlanckEdges(fromWavenumber, toWavenumber, bandCount, referenceTemperature);
         double step = (toWavenumber - fromWavenumber) / samples;
+
+        // How much of the continuum's range each band covers, so the continuum can be shared out
+        // among the bands that overlap it.
+        double continuumSpan = Math.Max(0.0, continuumTo - continuumFrom);
+        var continuumWeight = new double[bandCount];
+        if (continuumOpticalDepth > 0 && continuumSpan > 0)
+        {
+            for (int b = 0; b < bandCount; b++)
+            {
+                double overlap = Math.Min(edges[b + 1], continuumTo) - Math.Max(edges[b], continuumFrom);
+                continuumWeight[b] = Math.Max(0.0, overlap) / continuumSpan;
+            }
+        }
 
         var bands = new List<SpectralBand>(bandCount);
 
@@ -259,6 +291,7 @@ public static class BandDerivation
                 Co2Fraction = wellMixed > 0 ? Math.Clamp(carbon / wellMixed, 0.0, 1.0) : 0.0,
                 WaterVapourOpticalDepth = vapour,
                 OzoneOpticalDepth = ozone,
+                ContinuumOpticalDepth = continuumOpticalDepth * continuumWeight[b],
 
                 Structure = reference!.QuadratureFrom(slice, Math.Min(gPoints, width))
             });

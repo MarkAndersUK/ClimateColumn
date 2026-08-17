@@ -91,11 +91,21 @@ public sealed class MainForm : Form
     private async Task RunSweepsAsync()
     {
         // Co2Sweep.Run marches the column to equilibrium at every concentration, which takes
-        // a few seconds; keep it off the UI thread.
-        var sweeps = await Task.Run(() => new[]
+        // a few seconds; keep it off the UI thread. The spectral configuration is slower again -
+        // eight derived bands with four g-points each - and is null when the HITRAN line lists
+        // have not been fetched, in which case the chart shows the two grey configurations.
+        var sweeps = await Task.Run(() =>
         {
-            Co2Sweep.NoFeedback(),
-            Co2Sweep.WithWaterVapourFeedback()
+            var all = new List<Co2Sweep>
+            {
+                Co2Sweep.NoFeedback(),
+                Co2Sweep.WithWaterVapourFeedback()
+            };
+
+            var spectral = Co2Sweep.SpectralBands();
+            if (spectral is not null) all.Add(spectral);
+
+            return all.ToArray();
         });
 
         _sweeps = sweeps;

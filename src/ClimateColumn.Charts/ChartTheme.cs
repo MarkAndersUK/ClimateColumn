@@ -32,7 +32,10 @@ public sealed class ChartTheme
         Grid = FromHex("#e1e0d9"),
         Axis = FromHex("#c3c2b7"),
         Hairline = Color.FromArgb(26, 11, 11, 11),
-        Series = new[] { FromHex("#2a78d6"), FromHex("#eb6834") }
+        // Slot 3 (aqua) sits at 2.74:1 against the light surface, below the 3:1 bar. The relief
+        // rule applies and is met: every series carries a direct end label, and the values grid
+        // repeats every number.
+        Series = new[] { FromHex("#2a78d6"), FromHex("#eb6834"), FromHex("#1baf7a") }
     };
 
     public static ChartTheme Dark { get; } = new()
@@ -45,7 +48,7 @@ public sealed class ChartTheme
         Grid = FromHex("#2c2c2a"),
         Axis = FromHex("#383835"),
         Hairline = Color.FromArgb(26, 255, 255, 255),
-        Series = new[] { FromHex("#3987e5"), FromHex("#d95926") }
+        Series = new[] { FromHex("#3987e5"), FromHex("#d95926"), FromHex("#199e70") }
     };
 
     private static Color FromHex(string hex) => ColorTranslator.FromHtml(hex);
