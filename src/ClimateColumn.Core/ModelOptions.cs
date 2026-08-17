@@ -310,6 +310,37 @@ public sealed class ModelOptions
     /// <summary>Near-surface wind speed used in the Koenigsberger h_c relation, m s^-1.</summary>
     public double WindSpeed { get; set; } = 3.0;
 
+    /// <summary>
+    /// Surface moisture availability, 0 to 1: how freely the surface can supply water to
+    /// evaporation. 1 is open water, 0 disables the latent flux entirely.
+    /// </summary>
+    /// <remarks>
+    /// <strong>Zero by default, deliberately.</strong> On Earth evaporation carries roughly
+    /// 80 W m^-2 off the surface against about 20 for sensible heat, so this is the largest
+    /// non-radiative term in the surface budget and leaving it out is a real omission. But the
+    /// model's h_c relation was calibrated with the sensible flux standing in for both, and its
+    /// documented equilibrium follows from that calibration. Switching the latent flux on
+    /// therefore gives a different model rather than a more accurate version of this one: the
+    /// surface cools substantially, and h_c would need recalibrating to put it back.
+    ///
+    /// Keeping the default at zero means every existing result stands, and the term is there to
+    /// be turned on by anyone who wants to see what it does - which is the honest way to ship a
+    /// term that changes the answer.
+    /// </remarks>
+    public double SurfaceMoistureAvailability { get; set; } = 0.0;
+
+    /// <summary>
+    /// Near-surface relative humidity, 0 to 1: how close the receiving air is to saturation,
+    /// and so how much of the surface's saturation humidity is actually available as a gradient.
+    /// </summary>
+    /// <remarks>
+    /// Fixed rather than predicted. The model carries no prognostic humidity - vapour enters
+    /// only as an absorber scaled by Clausius-Clapeyron - so there is nothing to evolve this
+    /// towards. It is the same fixed-relative-humidity assumption the water-vapour feedback
+    /// already rests on, applied at the surface.
+    /// </remarks>
+    public double NearSurfaceRelativeHumidity { get; set; } = 0.8;
+
     /// <summary>Critical lapse rate for convective adjustment, K m^-1.</summary>
     public double CriticalLapseRate { get; set; } = 0.0065;
 
@@ -479,6 +510,21 @@ public sealed class ModelOptions
     public void ValidateForIntegration()
     {
         Validate();
+
+        if (SurfaceMoistureAvailability is < 0.0 or > 1.0)
+        {
+            throw new ArgumentException(
+                $"SurfaceMoistureAvailability must be between 0 and 1; got " +
+                $"{SurfaceMoistureAvailability}. Above 1 the surface would supply water faster " +
+                "than saturation allows.");
+        }
+
+        if (NearSurfaceRelativeHumidity is < 0.0 or > 1.0)
+        {
+            throw new ArgumentException(
+                $"NearSurfaceRelativeHumidity must be between 0 and 1; got " +
+                $"{NearSurfaceRelativeHumidity}.");
+        }
 
         // A longwave-transparent atmosphere that still absorbs sunlight has no way to shed
         // that energy: there is no equilibrium and the integration runs away to arbitrarily

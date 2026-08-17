@@ -81,6 +81,8 @@ public static class Reporting
         sb.AppendLine($"  solar constant / albedo   : {o.SolarConstant:F1} W/m2 / {o.Albedo:F3}");
         sb.AppendLine($"  surface emissivity        : {o.SurfaceEmissivity:F3}");
         sb.AppendLine($"  wind speed / h_c          : {o.WindSpeed:F2} m/s / {ConvectionSolver.SurfaceHeatTransferCoefficient(o.WindSpeed):F2} W/m2/K");
+        if (o.SurfaceMoistureAvailability > 0.0)
+            sb.AppendLine($"  moisture availability / RH: {o.SurfaceMoistureAvailability:F2} / {o.NearSurfaceRelativeHumidity:F2}");
 
         if (Math.Abs(o.Co2Concentration - o.Co2ReferenceConcentration) > 1e-9)
             sb.AppendLine($"  CO2                       : {o.Co2Concentration:F1} ppm vs {o.Co2ReferenceConcentration:F1} ppm reference  " +
@@ -163,6 +165,10 @@ public static class Reporting
         sb.AppendLine($"  upward longwave at surface: {r.SurfaceUpwardFlux,10:F3} W/m2  (emission + reflection)");
         sb.AppendLine($"  surface downward longwave : {r.SurfaceDownwardFlux,10:F3} W/m2");
         sb.AppendLine($"  surface sensible heat     : {result.SensibleHeatFlux,10:F3} W/m2");
+        if (result.LatentHeatFlux != 0.0)
+        {
+            sb.AppendLine($"  surface latent heat       : {result.LatentHeatFlux,10:F3} W/m2  (Bowen ratio {result.BowenRatio:F2})");
+        }
         sb.AppendLine($"  TOA imbalance             : {result.TopOfAtmosphereImbalance,10:E3} W/m2");
         sb.AppendLine($"  surface imbalance         : {result.SurfaceImbalance,10:E3} W/m2");
         sb.AppendLine();

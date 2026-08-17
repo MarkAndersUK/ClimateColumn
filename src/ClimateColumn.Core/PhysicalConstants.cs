@@ -57,6 +57,18 @@ public static class PhysicalConstants
     /// </summary>
     public const double ClausiusClapeyronScale = LatentHeatOfVaporisation / WaterVapourGasConstant;
 
+    /// <summary>Saturation vapour pressure over water at the triple point, Pa.</summary>
+    public const double TriplePointVapourPressure = 611.2;
+
+    /// <summary>The triple point of water, K - the reference for the integrated C-C relation.</summary>
+    public const double TriplePointTemperature = 273.16;
+
+    /// <summary>
+    /// Ratio of the dry-air and water-vapour gas constants, R_d / R_v = 0.622. Converts a
+    /// vapour pressure into a specific humidity: q = epsilon e / p.
+    /// </summary>
+    public const double VapourMixingRatio = DryAirGasConstant / WaterVapourGasConstant;
+
     /// <summary>Seconds in a day.</summary>
     public const double SecondsPerDay = 86400.0;
 }

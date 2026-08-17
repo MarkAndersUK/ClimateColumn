@@ -3,8 +3,15 @@ namespace ClimateColumn.Core;
 /// <summary>One spectral line: where it sits, how strong it is, and how broad.</summary>
 /// <param name="Wavenumber">Line centre, cm^-1.</param>
 /// <param name="Strength">Integrated line strength, in the arbitrary units of the band.</param>
-/// <param name="HalfWidth">Lorentz half-width at the reference pressure, cm^-1.</param>
-public readonly record struct SpectralLine(double Wavenumber, double Strength, double HalfWidth);
+/// <param name="HalfWidth">
+/// Lorentz half-width at the reference pressure and temperature (1 atm, 296 K), cm^-1.
+/// </param>
+/// <param name="TemperatureExponent">
+/// HITRAN's n_air: the half-width goes as (296/T)^n. Zero leaves the width temperature
+/// independent, which is what a line list without the column gives.
+/// </param>
+public readonly record struct SpectralLine(
+    double Wavenumber, double Strength, double HalfWidth, double TemperatureExponent = 0.0);
 
 /// <summary>
 /// A brute-force spectral reference: an explicit list of lines, resolved on a fine wavenumber
@@ -135,24 +142,35 @@ public sealed class LineByLineBand
     /// <summary>How far from its centre a line is evaluated, cm^-1.</summary>
     public double WingCutoff { get; private init; } = double.PositiveInfinity;
 
+    /// <summary>HITRAN's reference temperature for half-widths and intensities, K.</summary>
+    public const double ReferenceTemperature = 296.0;
+
     /// <summary>
     /// Absorption coefficient at every wavenumber sample, for a path at
-    /// <paramref name="pressureRatio"/> times the reference pressure, normalised so that the
-    /// band mean at the reference pressure is exactly 1.
+    /// <paramref name="pressureRatio"/> times the reference pressure and
+    /// <paramref name="temperature"/>, normalised so that the band mean at the reference state
+    /// is exactly 1.
     /// </summary>
     /// <remarks>
-    /// Lines are Lorentz-shaped with half-width proportional to pressure, which is the
-    /// collision broadening the model's own PressureBroadeningExponent gestures at. Because
-    /// the profile is normalised in area, broadening moves absorption from the cores into the
-    /// wings without changing the band mean - so a pressure change reshapes the distribution
-    /// while leaving the total absorber amount alone, which is exactly the case that tests
-    /// whether correlated-k holds.
+    /// Lines are Lorentz-shaped with half-width
+    /// <c>gamma = gamma_ref * (p/p_ref) * (296/T)^n</c>, where n is HITRAN's n_air. Collisions
+    /// are both more frequent at higher pressure and faster at higher temperature, and the two
+    /// pull the width in opposite directions: a stratospheric layer at a tenth of an atmosphere
+    /// and 220 K is broadened about 12% more than pressure alone would say.
+    ///
+    /// Because the profile is normalised in area, broadening moves absorption from the cores
+    /// into the wings without changing the band mean - so a pressure or temperature change
+    /// reshapes the distribution while leaving the total absorber amount alone, which is exactly
+    /// the case that tests whether correlated-k holds. Line <em>strengths</em> are still used at
+    /// their 296 K values; scaling those needs total internal partition sums.
     /// </remarks>
-    public double[] AbsorptionCoefficients(double pressureRatio = 1.0)
+    public double[] AbsorptionCoefficients(
+        double pressureRatio = 1.0, double temperature = ReferenceTemperature)
     {
         if (pressureRatio <= 0) throw new ArgumentException("pressureRatio must be positive.");
+        if (temperature <= 0) throw new ArgumentException("temperature must be positive.");
 
-        var k = Accumulate(pressureRatio);
+        var k = Accumulate(pressureRatio, temperature);
 
         // Normalise by the reference-pressure band mean so results are dimensionless. The
         // reference mean is used at every pressure, since area-normalised broadening leaves it
@@ -175,17 +193,22 @@ public sealed class LineByLineBand
     /// against 90,000 samples is billions of evaluations the direct way, and a fraction of that
     /// once each line only touches its own neighbourhood.
     /// </remarks>
-    private double[] Accumulate(double pressureRatio)
+    private double[] Accumulate(double pressureRatio, double temperature)
     {
         var k = new double[_wavenumbers.Length];
         if (_wavenumbers.Length < 2) return k;
 
         double step = _wavenumbers[1] - _wavenumbers[0];
         double first = _wavenumbers[0];
+        double temperatureRatio = ReferenceTemperature / temperature;
 
         foreach (var line in _lines)
         {
             double gamma = line.HalfWidth * pressureRatio;
+            if (line.TemperatureExponent != 0.0)
+            {
+                gamma *= Math.Pow(temperatureRatio, line.TemperatureExponent);
+            }
             double gammaSquared = gamma * gamma;
             double amplitude = line.Strength * gamma / Math.PI;
 
@@ -214,7 +237,7 @@ public sealed class LineByLineBand
     {
         if (_referenceMean is double cached) return cached;
 
-        var k = Accumulate(1.0);
+        var k = Accumulate(1.0, ReferenceTemperature);
 
         double sum = 0.0;
         foreach (double value in k) sum += value;
@@ -229,9 +252,11 @@ public sealed class LineByLineBand
     /// <paramref name="opticalDepth"/>: the spectral mean of exp(-k(nu) u), with no band
     /// approximation.
     /// </summary>
-    public double Transmission(double opticalDepth, double pressureRatio = 1.0)
+    public double Transmission(
+        double opticalDepth, double pressureRatio = 1.0,
+        double temperature = ReferenceTemperature)
     {
-        var k = AbsorptionCoefficients(pressureRatio);
+        var k = AbsorptionCoefficients(pressureRatio, temperature);
 
         double sum = 0.0;
         for (int i = 0; i < k.Length; i++) sum += Math.Exp(-k[i] * opticalDepth);
@@ -260,6 +285,27 @@ public sealed class LineByLineBand
     }
 
     /// <summary>
+    /// As above, but each layer also carries its own temperature - the case a real column
+    /// presents, where pressure and temperature both fall with height and the half-width
+    /// responds to each in the opposite sense.
+    /// </summary>
+    public double Transmission(
+        IReadOnlyList<(double PressureRatio, double Temperature, double OpticalDepth)> layers)
+    {
+        var total = new double[_wavenumbers.Length];
+
+        foreach (var (pressureRatio, temperature, opticalDepth) in layers)
+        {
+            var k = AbsorptionCoefficients(pressureRatio, temperature);
+            for (int i = 0; i < total.Length; i++) total[i] += k[i] * opticalDepth;
+        }
+
+        double sum = 0.0;
+        for (int i = 0; i < total.Length; i++) sum += Math.Exp(-total[i]);
+        return sum / total.Length;
+    }
+
+    /// <summary>
     /// The band's own k-distribution, measured rather than assumed: sort the resolved
     /// absorption coefficients, divide them into equal-weight groups, and take each group's
     /// mean.
@@ -269,11 +315,12 @@ public sealed class LineByLineBand
     /// band mean automatically, so the quadrature holds exactly as much absorber as the
     /// spectrum did.
     /// </remarks>
-    public KDistribution ToKDistribution(int points, double pressureRatio = 1.0)
+    public KDistribution ToKDistribution(
+        int points, double pressureRatio = 1.0, double temperature = ReferenceTemperature)
     {
         if (points < 1) throw new ArgumentException("points must be >= 1.");
 
-        var k = AbsorptionCoefficients(pressureRatio);
+        var k = AbsorptionCoefficients(pressureRatio, temperature);
         Array.Sort(k);
 
         return GroupIntoQuadrature(new[] { k }, points).Single();

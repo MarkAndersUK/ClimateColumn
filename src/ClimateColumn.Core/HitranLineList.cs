@@ -15,12 +15,12 @@ namespace ClimateColumn.Core;
 /// keeping it out means the test suite still builds and runs with no network and no external
 /// files - tests that want real lines skip when the file is absent rather than failing.
 ///
-/// Two simplifications, both stated rather than buried. Intensities are used at their 296 K
-/// values, because scaling them properly needs total internal partition sums, which is a
-/// substantial dependency of its own; and only air broadening is applied, with the width taken
-/// proportional to pressure. Neither matters for what this is used for, which is comparing band
-/// approximations against a resolved spectrum at a common reference state - both the reference
-/// and the approximation see exactly the same line data.
+/// Two simplifications remain, both stated rather than buried. Intensities are used at their
+/// 296 K values, because scaling them properly needs total internal partition sums, which is a
+/// substantial dependency of its own; and only air broadening is applied, with no self
+/// broadening. Half-widths <em>are</em> scaled with temperature via n_air. Neither omission
+/// matters much for what this is used for, which is comparing band approximations against a
+/// resolved spectrum - both the reference and the approximation see exactly the same line data.
 /// </remarks>
 public static class HitranLineList
 {
@@ -57,10 +57,16 @@ public static class HitranLineList
             double intensity = Parse(fields[1], path, lineNumber, "sw");
             double halfWidth = Parse(fields[2], path, lineNumber, "gamma_air");
 
+            // n_air is optional so that a list fetched before this column was read still loads.
+            // Absent, the width stays temperature independent, which is the old behaviour.
+            double temperatureExponent = fields.Length > 3
+                ? Parse(fields[3], path, lineNumber, "n_air")
+                : 0.0;
+
             if (intensity < minimumIntensity) continue;
             if (halfWidth <= 0) continue;
 
-            lines.Add(new SpectralLine(nu, intensity, halfWidth));
+            lines.Add(new SpectralLine(nu, intensity, halfWidth, temperatureExponent));
         }
 
         if (lines.Count == 0)

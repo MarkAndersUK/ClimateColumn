@@ -18,6 +18,19 @@ public sealed class ModelResult
     public required double SensibleHeatFlux { get; init; }
 
     /// <summary>
+    /// Latent heat flux from surface to air, W m^-2 - energy carried by evaporation. Zero
+    /// unless SurfaceMoistureAvailability is set, which it is not by default.
+    /// </summary>
+    public double LatentHeatFlux { get; init; }
+
+    /// <summary>
+    /// Bowen ratio, sensible over latent. Roughly 0.2 over tropical ocean and above 1 over
+    /// dry land; NaN when there is no evaporation to divide by.
+    /// </summary>
+    public double BowenRatio =>
+        LatentHeatFlux == 0.0 ? double.NaN : SensibleHeatFlux / LatentHeatFlux;
+
+    /// <summary>
     /// Sol-air temperature diagnostic at the surface, K. At equilibrium this collapses onto
     /// the surface temperature by construction, so it is a check rather than a prediction.
     /// It carries no information when convection is disabled.
@@ -97,7 +110,7 @@ public sealed class ModelResult
         {
             var s = Column.Segments[i];
             double flux = Radiation.RadiativeHeating[i] + s.ShortwaveAbsorbed;
-            if (i == 0) flux += SensibleHeatFlux;
+            if (i == 0) flux += SensibleHeatFlux + LatentHeatFlux;
             rates[i] = flux / s.HeatCapacity * PhysicalConstants.SecondsPerDay;
         }
         return rates;
@@ -131,6 +144,7 @@ public sealed class ColumnModel
         double toaImbalance = 0.0;
         double surfaceImbalance = 0.0;
         double sensible = 0.0;
+        double latent = 0.0;
 
         // The water-vapour absorber follows the evolving temperature (Clausius-Clapeyron),
         // so its distribution must be refreshed before every radiation solve. The fixed dry
@@ -144,14 +158,23 @@ public sealed class ColumnModel
             if (temperatureDependentAbsorber) Column.DistributeOpticalDepth();
             rad = RadiationSolver.Solve(Column);
             sensible = ConvectionSolver.SensibleHeatFlux(Column);
+            latent = ConvectionSolver.LatentHeatFlux(Column);
 
-            // Segment energy budget: longwave convergence + absorbed solar,
-            // with the surface sensible heat flux delivered to the lowest segment.
+            // Segment energy budget: longwave convergence + absorbed solar, with both surface
+            // turbulent fluxes delivered to the lowest segment.
+            //
+            // Latent heat is released where the vapour condenses, which is spread through the
+            // convecting layer rather than concentrated at its base. Depositing it at the base
+            // is nonetheless equivalent here: the convective adjustment immediately mixes that
+            // block to the critical lapse rate conserving enthalpy, so heat added anywhere
+            // inside it produces the same adjusted profile. That equivalence is why this is a
+            // placement detail and not an approximation - but it holds only under
+            // ConvectionMode.Full, which is why the flux is zero without convection.
             for (int i = 0; i < n; i++)
             {
                 tendency[i] = rad.RadiativeHeating[i] + Column.Segments[i].ShortwaveAbsorbed;
             }
-            tendency[0] += sensible;
+            tendency[0] += sensible + latent;
 
             // Surface energy budget.
             double epsS = Options.SurfaceEmissivity;
@@ -159,7 +182,8 @@ public sealed class ColumnModel
             surfaceImbalance = Column.SurfaceShortwaveAbsorbed
                              + epsS * rad.SurfaceDownwardFlux
                              - surfaceEmission
-                             - sensible;
+                             - sensible
+                             - latent;
 
             toaImbalance = Options.AbsorbedSolarFlux - rad.OutgoingLongwave;
 
@@ -179,18 +203,25 @@ public sealed class ColumnModel
                 double lambda = 2.0 * (1.0 - Math.Exp(-rad.OpticalThickness[i])) *
                                 4.0 * PhysicalConstants.StefanBoltzmann * Math.Pow(s.Temperature, 3);
                 if (i == 0 && Options.Convection != ConvectionMode.None)
+                {
                     lambda += ConvectionSolver.SurfaceHeatTransferCoefficient(Options.WindSpeed);
+                    lambda += ConvectionSolver.LatentHeatFluxAirSensitivity(Column);
+                }
                 if (lambda > 1e-30) dt = Math.Min(dt, 0.8 * s.HeatCapacity / lambda);
             }
 
             if (Math.Abs(surfaceImbalance) > 1e-30)
                 dt = Math.Min(dt, limit * Options.SurfaceHeatCapacity / Math.Abs(surfaceImbalance));
 
+            // The latent term belongs here as much as h_c does. Near 288 K with open water it
+            // is the largest entry in this sum - larger than h_c and than the Planck term - so
+            // omitting it would let the surface overshoot and oscillate instead of settling.
             double surfaceLambda = epsS * 4.0 * PhysicalConstants.StefanBoltzmann *
                                    Math.Pow(Column.SurfaceTemperature, 3) +
                                    (Options.Convection == ConvectionMode.None
                                        ? 0.0
-                                       : ConvectionSolver.SurfaceHeatTransferCoefficient(Options.WindSpeed));
+                                       : ConvectionSolver.SurfaceHeatTransferCoefficient(Options.WindSpeed)) +
+                                   ConvectionSolver.LatentHeatFluxSensitivity(Column);
             if (surfaceLambda > 1e-30)
                 dt = Math.Min(dt, 0.8 * Options.SurfaceHeatCapacity / surfaceLambda);
 
@@ -233,10 +264,11 @@ public sealed class ColumnModel
         if (temperatureDependentAbsorber) Column.DistributeOpticalDepth();
         rad = RadiationSolver.Solve(Column);
         sensible = ConvectionSolver.SensibleHeatFlux(Column);
+        latent = ConvectionSolver.LatentHeatFlux(Column);
         double eps = Options.SurfaceEmissivity;
         double emissionFlux = RadiationSolver.StefanBoltzmannFlux(Column.SurfaceTemperature, eps);
         surfaceImbalance = Column.SurfaceShortwaveAbsorbed + eps * rad.SurfaceDownwardFlux
-                           - emissionFlux - sensible;
+                           - emissionFlux - sensible - latent;
         toaImbalance = Options.AbsorbedSolarFlux - rad.OutgoingLongwave;
 
         double netLongwaveLoss = emissionFlux - eps * rad.SurfaceDownwardFlux;
@@ -257,6 +289,7 @@ public sealed class ColumnModel
             TopOfAtmosphereImbalance = toaImbalance,
             SurfaceImbalance = surfaceImbalance,
             SensibleHeatFlux = sensible,
+            LatentHeatFlux = latent,
             SolAirTemperature = solAir,
             NearSurfaceAirTemperature = airTemperature
         };

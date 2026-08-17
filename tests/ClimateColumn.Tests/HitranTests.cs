@@ -393,4 +393,83 @@ public class HitranTests
                 $"sub-band {j} should come from the measured distribution");
         }
     }
+
+    /// <summary>
+    /// n_air is read from the file and is not uniformly zero, which is the difference between
+    /// applying the temperature dependence and silently discarding the column.
+    /// </summary>
+    [TestMethod]
+    public void TheTemperatureExponentIsReadFromTheFile()
+    {
+        var lines = HitranLineList.Load(RequirePath(CarbonDioxide.File), minimumIntensity: 1e-25);
+
+        int withExponent = lines.Count(l => l.TemperatureExponent > 0);
+        double mean = lines.Average(l => l.TemperatureExponent);
+
+        Assert.IsTrue(withExponent > 0.9 * lines.Count,
+            $"only {withExponent} of {lines.Count} CO2 lines carry n_air; the column is being " +
+            "dropped somewhere between the download and the parser");
+
+        // HITRAN's air-broadening exponents sit near 0.7 for CO2. A value near zero would mean
+        // the field parsed but landed in the wrong column.
+        Assert.IsTrue(mean is > 0.5 and < 0.9,
+            $"mean n_air {mean:F3} is outside the range CO2 line data actually occupies");
+    }
+
+    /// <summary>
+    /// A cold layer is more broadened than pressure alone predicts, and the effect is large
+    /// enough to change transmission - which is why discarding n_air was a real omission.
+    /// </summary>
+    [TestMethod]
+    public void ColdLayersAreBroaderThanPressureAloneWouldSay()
+    {
+        var band = Band(CarbonDioxide);
+
+        // A stratospheric layer: a tenth of an atmosphere, 217 K rather than 296 K.
+        const double pressure = 0.1;
+        var warm = band.AbsorptionCoefficients(pressure, 296.0);
+        var cold = band.AbsorptionCoefficients(pressure, 217.0);
+
+        // A Lorentz profile is area-normalised, so broadening should move absorption around
+        // without changing the band mean. It shifts by ~1e-5 rather than exactly zero, because
+        // wider lines lose slightly more of their area past the 25 cm^-1 cutoff and past the
+        // band edges. That the residue is this small is the check: a mistake in the exponent
+        // would rescale the whole profile, not nudge its tails.
+        double drift = Math.Abs(cold.Average() - warm.Average()) / warm.Average();
+        Assert.IsTrue(drift < 1e-4,
+            $"band mean moved by {drift:E2}, far more than wing truncation can account for");
+
+        // Broader lines put less absorption in the cores and more in the wings, so the peak falls.
+        Assert.IsTrue(cold.Max() < warm.Max(),
+            $"cold peak {cold.Max():F1} should sit below warm peak {warm.Max():F1}");
+
+        // The consequence that matters: a band already saturated in its cores transmits less
+        // when absorption is spread into the wings.
+        double warmT = band.Transmission(10.0, pressure, 296.0);
+        double coldT = band.Transmission(10.0, pressure, 217.0);
+
+        Assert.IsTrue(coldT < warmT,
+            $"cold transmission {coldT:F4} should sit below warm {warmT:F4}");
+        Assert.IsTrue(Math.Abs(coldT - warmT) / warmT > 0.01,
+            $"the shift is only {100 * Math.Abs(coldT - warmT) / warmT:F2}%, too small to be " +
+            "the temperature dependence actually taking effect");
+    }
+
+    /// <summary>
+    /// At the reference temperature nothing moves, so every existing result stands unchanged.
+    /// </summary>
+    [TestMethod]
+    public void TheReferenceTemperatureReproducesTheOldBehaviour()
+    {
+        var band = Band(CarbonDioxide);
+
+        var withDefault = band.AbsorptionCoefficients(0.4);
+        var explicitly = band.AbsorptionCoefficients(0.4, LineByLineBand.ReferenceTemperature);
+
+        for (int i = 0; i < withDefault.Length; i++)
+        {
+            Assert.AreEqual(withDefault[i], explicitly[i], 0.0,
+                $"sample {i} should be identical at the reference temperature");
+        }
+    }
 }

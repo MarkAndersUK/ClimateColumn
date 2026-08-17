@@ -50,6 +50,150 @@ public static class ConvectionSolver
     }
 
     /// <summary>
+    /// Saturation vapour pressure over liquid water at <paramref name="temperature"/>, Pa,
+    /// from the Clausius-Clapeyron relation integrated with a constant latent heat:
+    /// <c>e_sat(T) = e_0 exp[(L/R_v)(1/T_0 - 1/T)]</c>.
+    /// </summary>
+    /// <remarks>
+    /// This is the same relation the water-vapour absorber already uses to scale its loading
+    /// with temperature, so evaporation and the greenhouse feedback are driven by one curve
+    /// rather than two that could drift apart. Holding L constant overstates e_sat somewhat
+    /// below freezing, where L should be the latent heat of sublimation; the surface flux this
+    /// feeds is near zero at those temperatures anyway.
+    /// </remarks>
+    public static double SaturationVapourPressure(double temperature)
+    {
+        if (temperature <= 0.0) return 0.0;
+
+        return PhysicalConstants.TriplePointVapourPressure * Math.Exp(
+            PhysicalConstants.ClausiusClapeyronScale *
+            (1.0 / PhysicalConstants.TriplePointTemperature - 1.0 / temperature));
+    }
+
+    /// <summary>
+    /// Saturation specific humidity, kg water per kg moist air:
+    /// <c>q_sat = epsilon e_sat / p</c>.
+    /// </summary>
+    public static double SaturationSpecificHumidity(double temperature, double pressure)
+    {
+        if (pressure <= 0.0) return 0.0;
+
+        double e = SaturationVapourPressure(temperature);
+
+        // The (1 - epsilon) e term keeps q below 1 as e approaches p, which matters only at
+        // temperatures this model never reaches, but costs nothing to carry.
+        return PhysicalConstants.VapourMixingRatio * e /
+               (pressure - (1.0 - PhysicalConstants.VapourMixingRatio) * e);
+    }
+
+    /// <summary>
+    /// d(q_sat)/dT, kg kg^-1 K^-1.
+    /// </summary>
+    /// <remarks>
+    /// Not simply <c>q (L/R_v) / T^2</c>. That would be the answer if q were proportional to
+    /// e, but the <c>(1 - epsilon) e</c> in the denominator moves too, and differentiating
+    /// through it gives an extra factor <c>p / (p - (1-epsilon) e)</c> - about 1.007 at 288 K.
+    /// Small, but the integrator's stability limit is built on this derivative, so it is worth
+    /// being the derivative of the function actually used rather than of a simpler one.
+    /// </remarks>
+    public static double SaturationSpecificHumiditySlope(double temperature, double pressure)
+    {
+        if (pressure <= 0.0 || temperature <= 0.0) return 0.0;
+
+        double e = SaturationVapourPressure(temperature);
+        double denominator = pressure - (1.0 - PhysicalConstants.VapourMixingRatio) * e;
+        if (denominator <= 0.0) return 0.0;
+
+        // de/dT = e (L/R_v) / T^2, and dq/de = epsilon p / denominator^2.
+        double dedt = e * PhysicalConstants.ClausiusClapeyronScale / (temperature * temperature);
+        return PhysicalConstants.VapourMixingRatio * pressure /
+               (denominator * denominator) * dedt;
+    }
+
+    /// <summary>
+    /// Latent heat flux from the surface into the lowest segment, W m^-2 (positive upward):
+    /// the energy carried off the surface by evaporation.
+    /// </summary>
+    /// <remarks>
+    /// The bulk aerodynamic form, written through the sensible-heat coefficient the model
+    /// already has:
+    ///
+    /// <code>
+    ///   LE = beta * (h_c / c_p) * L * [ q_sat(T_s, p_s) - RH * q_sat(T_air, p_s) ]
+    /// </code>
+    ///
+    /// The two fluxes share a transfer velocity - the same eddies carry heat and vapour - so
+    /// <c>h_c = rho c_p C_H v</c> gives <c>h_c / c_p = rho C_H v</c>, the mass transfer
+    /// coefficient in kg m^-2 s^-1, on the assumption <c>C_E = C_H</c>. That assumption is
+    /// close to true over water and is what lets one wind-speed relation drive both.
+    ///
+    /// <c>RH</c> is the near-surface relative humidity, setting how far from saturation the
+    /// receiving air is. <c>beta</c> is surface moisture availability, and it scales the whole
+    /// flux rather than the surface humidity alone: the surface itself is saturated, and beta
+    /// is the fraction of that potential evaporation a surface which cannot supply water fast
+    /// enough actually delivers. Scaling the surface humidity instead would be a different and
+    /// wrong statement - it would put a dry surface <em>below</em> the overlying air and drive
+    /// perpetual dew deposition rather than merely suppressing evaporation.
+    ///
+    /// This term is off by default (<c>beta = 0</c>), because the model's h_c was calibrated
+    /// with the sensible flux doing the work of both. Turning it on is a different model, not
+    /// a correction to this one - see the note on ModelOptions.SurfaceMoistureAvailability.
+    /// </remarks>
+    public static double LatentHeatFlux(Column column)
+    {
+        if (column.Options.Convection == ConvectionMode.None) return 0.0;
+
+        double beta = column.Options.SurfaceMoistureAvailability;
+        if (beta <= 0.0) return 0.0;
+
+        double pressure = StandardAtmosphere.SeaLevelPressure;
+        double hc = SurfaceHeatTransferCoefficient(column.Options.WindSpeed);
+        double massTransfer = hc / PhysicalConstants.DryAirSpecificHeat;
+
+        double qSurface = SaturationSpecificHumidity(column.SurfaceTemperature, pressure);
+        double qAir = column.Options.NearSurfaceRelativeHumidity *
+                      SaturationSpecificHumidity(NearSurfaceAirTemperature(column), pressure);
+
+        // A negative result is dew or frost deposition, which happens when the air is warmer
+        // than the surface. Allowed - the surface budget has to close either way.
+        return beta * massTransfer * PhysicalConstants.LatentHeatOfVaporisation *
+               (qSurface - qAir);
+    }
+
+    /// <summary>
+    /// How fast the latent flux grows with surface temperature, W m^-2 K^-1. The explicit
+    /// integrator needs this: near 288 K it is larger than h_c itself, so leaving it out of
+    /// the stability limit lets the surface oscillate rather than settle.
+    /// </summary>
+    public static double LatentHeatFluxSensitivity(Column column) =>
+        LatentSensitivity(column, column.SurfaceTemperature, humidityScale: 1.0);
+
+    /// <summary>
+    /// How fast the latent flux <em>falls</em> as the receiving air warms, W m^-2 K^-1, since
+    /// warmer air holds more vapour and takes less. Returned positive: it damps the lowest
+    /// segment, so the integrator treats it exactly as it treats h_c there.
+    /// </summary>
+    public static double LatentHeatFluxAirSensitivity(Column column) =>
+        LatentSensitivity(column, NearSurfaceAirTemperature(column),
+            column.Options.NearSurfaceRelativeHumidity);
+
+    private static double LatentSensitivity(Column column, double temperature, double humidityScale)
+    {
+        if (column.Options.Convection == ConvectionMode.None) return 0.0;
+
+        double beta = column.Options.SurfaceMoistureAvailability;
+        if (beta <= 0.0) return 0.0;
+        if (humidityScale <= 0.0 || temperature <= 0.0) return 0.0;
+
+        double hc = SurfaceHeatTransferCoefficient(column.Options.WindSpeed);
+        double slope = SaturationSpecificHumiditySlope(
+            temperature, StandardAtmosphere.SeaLevelPressure);
+
+        return beta * hc / PhysicalConstants.DryAirSpecificHeat *
+               PhysicalConstants.LatentHeatOfVaporisation * humidityScale * slope;
+    }
+
+    /// <summary>
     /// Sol-air temperature, K: the fictitious outdoor air temperature that would give the
     /// same surface heat flux as the combined effect of absorbed solar radiation and
     /// longwave exchange. Provided as a diagnostic of the surface energy balance.

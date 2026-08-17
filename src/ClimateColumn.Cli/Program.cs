@@ -250,6 +250,8 @@ public static class Program
             WaterVapourOpticalDepth = GetDouble(args, "wv-tau", 0.0),
             WaterVapourScaleHeight = GetDouble(args, "wv-scale-height-km", 2.0) * 1000.0,
             WindSpeed = GetDouble(args, "wind", 3.0),
+            SurfaceMoistureAvailability = GetDouble(args, "moisture", 0.0),
+            NearSurfaceRelativeHumidity = GetDouble(args, "humidity", 0.8),
             CriticalLapseRate = GetDouble(args, "lapse-rate", 6.5) / 1000.0,
             SurfaceHeatCapacity = GetDouble(args, "surface-heat-capacity", 4.18e7),
             MaxSteps = (int)GetDouble(args, "max-steps", 500_000)
@@ -354,6 +356,9 @@ public static class Program
           --wv-scale-height-km X     water vapour scale height              (2)
           --convection MODE          none | surface | full                  (full)
           --wind X                   surface wind speed, m/s, for h_c       (3.0)
+          --moisture X               surface moisture availability, 0-1;    (0)
+                                     0 disables evaporation, 1 is open water
+          --humidity X               near-surface relative humidity, 0-1    (0.8)
           --lapse-rate X             critical lapse rate, K/km              (6.5)
           --surface-heat-capacity X  J/m2/K                                 (4.18e7)
           --max-steps N              iteration cap                          (500000)

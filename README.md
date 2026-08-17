@@ -63,18 +63,88 @@ reflects the remaining $(1-\varepsilon_s)$ of the incident back radiation.
 
 ### Convection
 
-Two non-radiative terms, both switchable via `--convection none|surface|full`:
+Three non-radiative terms, all switchable via `--convection none|surface|full`:
 
 - **Surface sensible heat**, $Q_c = h_c\,(T_s - T_{\text{air}})$, with the wind-speed
   relation $h_c = 5.8 + 4.1\,v$ from Koenigsberger et al., *Manual of Tropical Housing and
   Building*. The air temperature is extrapolated to $z=0$ from the two lowest segments.
+- **Surface latent heat** — evaporation — described below. **Off by default.**
 - **Critical-lapse-rate adjustment** on the atmospheric segments: wherever the lapse rate
   exceeds 6.5 K km⁻¹, the affected block is mixed onto exactly that lapse rate while
   conserving $\sum C_i T_i$.
 
 The surface is deliberately **excluded** from the adjustment. It exchanges heat with the
-air only through radiation and $h_c$; letting the adjustment mix the surface reservoir as
-well would double count that transfer and leave the surface energy budget open.
+air only through radiation and the turbulent fluxes; letting the adjustment mix the surface
+reservoir as well would double count that transfer and leave the surface energy budget open.
+
+#### Latent heat
+
+On Earth evaporation carries roughly 80 W m⁻² off the surface against about 20 for sensible
+heat, which makes it the largest non-radiative term in the surface energy budget. It enters
+through the bulk aerodynamic form, written through the coefficient the sensible flux already
+uses:
+
+$$
+LE = \beta\,\frac{h_c}{c_p}\,L\,\bigl[\,q_{\text{sat}}(T_s,p_s) - \text{RH}\;q_{\text{sat}}(T_{\text{air}},p_s)\,\bigr]
+$$
+
+Heat and vapour are carried by the same eddies, so $h_c = \rho c_p C_H v$ gives
+$h_c/c_p = \rho C_H v$, the mass transfer coefficient in kg m⁻² s⁻¹, on the assumption
+$C_E = C_H$ — close to true over water, and what lets one wind-speed relation drive both
+fluxes. Saturation humidity comes from Clausius–Clapeyron integrated at constant $L$,
+
+$$
+e_{\text{sat}}(T) = e_0 \exp\!\left[\frac{L}{R_v}\!\left(\frac{1}{T_0} - \frac{1}{T}\right)\right],
+\qquad
+q_{\text{sat}} = \frac{\varepsilon\,e_{\text{sat}}}{p - (1-\varepsilon)\,e_{\text{sat}}},
+\qquad \varepsilon = \frac{R_d}{R_v} = 0.622
+$$
+
+the same curve that scales the water-vapour absorber, so evaporation and the greenhouse
+feedback cannot drift apart. $\beta$ (`--moisture`) is surface moisture availability and
+scales the **whole flux**: the surface itself is saturated, and $\beta$ is the fraction of
+potential evaporation a surface that cannot supply water fast enough actually delivers.
+Scaling the surface *humidity* instead would put a dry surface below the overlying air and
+drive perpetual dew deposition rather than merely suppressing evaporation. RH
+(`--humidity`, default 0.8) is the near-surface relative humidity — fixed, because the model
+carries no prognostic moisture to evolve it.
+
+The integrator needs $\partial LE/\partial T_s$ for its stability limit, and this is not
+$q\,(L/R_v)/T^2$: the $(1-\varepsilon)e$ in the denominator moves too, contributing a factor
+$p/(p-(1-\varepsilon)e)$, about 1.007 at 288 K. Near 288 K with open water the derivative is
+31 W m⁻² K⁻¹ — larger than $h_c$ and larger than the Planck term $4\varepsilon\sigma T^3$ —
+so leaving it out of the limit lets the surface oscillate instead of settling.
+
+Latent heat is delivered to the lowest segment. Condensation really happens spread through
+the convecting layer, but the placement is immaterial under `--convection full`: the
+adjustment mixes that block to the critical lapse rate conserving enthalpy, so heat added
+anywhere inside it gives the same adjusted profile. That equivalence is also why the flux is
+zero without convection.
+
+**Why it is off by default.** $h_c$ was calibrated with the sensible flux standing in for
+both, and the model's documented equilibrium follows from that calibration. Switching
+evaporation on therefore gives a *different* model rather than a more accurate version of
+this one — the surface cools and $h_c$ would need refitting to put it back. `--moisture 0`
+is exactly zero, not a small residue, so every result below stands unchanged.
+
+What happens when it is on:
+
+| `--moisture` | LE (W m⁻²) | H (W m⁻²) | Bowen | $T_s$ (K) | convecting top |
+|---:|---:|---:|---:|---:|---:|
+| 0 (default) | 0 | 35.85 | — | 286.797 | 3.44 km |
+| 0.2 | 21.32 | 18.12 | 0.85 | 286.339 | 4.06 km |
+| 0.35 | 32.80 | 8.64 | 0.26 | 286.078 | 4.06 km |
+| 0.7 | 51.17 | −6.53 | −0.13 | 285.660 | 4.06 km |
+| 1.0 | 61.51 | −15.07 | −0.24 | 285.423 | 4.06 km |
+
+Near $\beta = 0.35$ the Bowen ratio lands on Earth's global mean of about 0.25 — the model
+can reproduce the **partition** between the two fluxes. It cannot reproduce the
+**magnitude**: the total turbulent flux there is 41 W m⁻² against Earth's ~100, and no
+choice of $\beta$ closes that gap, because the ceiling is $h_c$ — a building-physics film
+coefficient, not a global-mean bulk transfer coefficient. Past $\beta \approx 0.5$ the
+sensible flux goes *negative*: evaporative cooling drops the surface below the air it is
+coupled to, which is what an over-tight surface–air coupling does when a second loss term
+is added to it.
 
 ### Beyond the grey column
 
@@ -706,6 +776,9 @@ that drawing path verifiable and gives documentation shots a way to include it.
 --wv-scale-height-km X     water vapour scale height              (2)
 --convection MODE          none | surface | full                  (full)
 --wind X                   surface wind speed, m/s, for h_c       (3.0)
+--moisture X               surface moisture availability, 0-1;    (0)
+                           0 disables evaporation, 1 is open water
+--humidity X               near-surface relative humidity, 0-1    (0.8)
 --lapse-rate X             critical lapse rate, K/km              (6.5)
 --surface-heat-capacity X  J/m2/K                                 (4.18e7)
 --max-steps N              iteration cap                          (500000)
@@ -818,9 +891,13 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
   from 1.70 to 1.25 across optical depth, and H₂O wants 2.40 where CO₂ wants 1.50 — so no single
   `--k-width` can serve an atmosphere containing both. Use `MeasuredKDistribution` when you have
   line data.
-- **One band per molecule, at one temperature.** CO₂ at 15 µm and H₂O's rotational band, both at
-  296 K with air broadening only and no temperature dependence of line strength. The other bands
-  that matter — H₂O's 6.3 µm bending band, the 9.6 µm ozone band — are untouched.
+- **Line strengths are not temperature-scaled.** Half-widths *are*: HITRAN's `n_air` is applied
+  as $\gamma = \gamma_{\text{ref}}\,(p/p_{\text{ref}})\,(296/T)^n$, so a stratospheric layer at
+  0.1 atm and 217 K comes out ~12 % broader than pressure alone would give. Intensities are still
+  used at their 296 K values, because scaling those needs total internal partition sums. Self
+  broadening, Voigt profiles (Doppler matters in the upper stratosphere), line mixing, sub-Lorentzian
+  far wings — which matter specifically for CO₂'s 15 µm wings, the band doing the work — and
+  pressure shift are all absent.
 - **Gas overlap is approximated.** A band's k-distribution comes from the total absorption of every
   gas in it at reference amounts, so moving one gas far from its reference degrades the distribution.
   Re-derive rather than extrapolate.
@@ -839,8 +916,10 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 - **The diffusivity is band-independent.** $D = 2$ is exact in the optically *thin* limit,
   which makes it the worst choice for opaque band centres. One $D$ cannot be right for bands
   spanning $\tau \ll 1$ to $\tau \gg 1$; the exact $2E_3(\tau)$ transmission would be needed.
-- **Nothing is checked against a line-by-line reference.** The window benchmarks verify the
-  algebra and the Planck integral, not whether the resulting spectrum resembles Earth's.
+- **The *column* is not checked against a line-by-line reference.** The band approximations are —
+  against both a synthetic spectrum and real HITRAN lines — but no run of the full column is
+  compared with a resolved calculation, so nothing here says the emergent spectrum resembles
+  Earth's.
 - **The water vapour feedback is crude.** It is on by loading only: a single column-integrated
   $\tau_v$ following Clausius–Clapeyron on the near-surface air temperature, with a fixed
   vertical shape and no relative humidity profile, no advection, and no distinction between
@@ -854,6 +933,20 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
   the solar absorption on a Chapman shape; nothing produces or destroys ozone, and it has no
   longwave effect.
 - **The convective adjustment is a hard constraint**, not a mass-flux scheme, and conserves
-  enthalpy rather than moist static energy.
+  dry enthalpy rather than moist static energy. Latent heat now enters the *surface* budget,
+  but there is no prognostic humidity, so nothing transports moisture aloft: the condensation
+  heating is delivered at the base of the convecting layer and mixed from there. Conserving
+  $h = c_p T + gz + Lq$ properly would need a moisture variable.
+- **Evaporation is off by default and cannot reach Earth's magnitude.** See the latent-heat
+  section: $\beta \approx 0.35$ matches Earth's Bowen ratio but the total turbulent flux tops
+  out near 41 W m⁻² against ~100 observed, because $h_c$ is a film coefficient rather than a
+  bulk transfer coefficient. Beyond $\beta \approx 0.5$ the sensible flux goes negative.
+- **Local thermodynamic equilibrium is assumed** — the source function is the Planck function
+  everywhere. True below about 60 km, so the 50 km model top keeps it safe, but it is an
+  assumption rather than a result.
+- **The angular integral is collapsed onto one number.** The exact hemispheric flux is
+  $2\pi\int_0^1 I(z,\mu)\,\mu\,\mathrm{d}\mu$; the solver replaces it with a single $D$. The
+  exact $2E_3(\tau)$ transmission exists in the test suite as a reference and is never used by
+  the solver.
 - The layer mass grid is built once from the standard atmosphere and held fixed as the
   temperature profile evolves.
