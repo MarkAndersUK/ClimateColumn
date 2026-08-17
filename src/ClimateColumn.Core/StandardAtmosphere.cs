@@ -4,6 +4,19 @@ namespace ClimateColumn.Core;
 /// U.S. Standard Atmosphere 1976, used to initialise the temperature profile and to
 /// build the hydrostatic pressure/mass grid of the column.
 /// </summary>
+/// <remarks>
+/// The standard is defined on <em>geopotential</em> altitude with gravity fixed at the defined
+/// constant g_0 = 9.80665 m s^-2. That is not an approximation in the standard - it is how the
+/// standard absorbs the variation of gravity with height, by measuring altitude in units of
+/// work done against gravity rather than in metres.
+///
+/// So there are two consistent ways to use these tables, and they differ by which altitude the
+/// caller means. The single-argument methods treat their argument as geopotential, which is the
+/// standard's own variable and reproduces its published table exactly. The overloads taking a
+/// planet radius treat their argument as <em>geometric</em> altitude and convert,
+/// <c>H = r_0 z / (r_0 + z)</c> - 50 geometric km is 49.61 geopotential km on Earth. That
+/// conversion is where the inverse-square law enters.
+/// </remarks>
 public static class StandardAtmosphere
 {
     // Geopotential base altitudes (m), base temperatures (K), lapse rates (K/m).
@@ -50,23 +63,51 @@ public static class StandardAtmosphere
         return b;
     }
 
-    /// <summary>Standard temperature (K) at geometric altitude z (m).</summary>
-    public static double Temperature(double z)
+    /// <summary>
+    /// Geopotential altitude, m, corresponding to geometric altitude <paramref name="z"/>:
+    /// <c>H = r_0 z / (r_0 + z)</c>.
+    /// </summary>
+    /// <remarks>
+    /// The geopotential is the work per unit mass done climbing to z against the inverse-square
+    /// field, <c>Phi(z) = int_0^z g_0 (r_0/(r_0+z'))^2 dz' = g_0 r_0 z / (r_0 + z)</c>, and the
+    /// geopotential altitude is that divided by g_0. It is always slightly below the geometric
+    /// altitude, because gravity weakens on the way up: 49,610 m for 50,000 m on Earth.
+    /// </remarks>
+    public static double GeopotentialAltitude(double z, double planetRadius)
     {
-        z = Math.Clamp(z, 0.0, BaseAltitude[^1]);
-        int b = LayerIndex(z);
-        return BaseTemperature[b] + LapseRate[b] * (z - BaseAltitude[b]);
+        if (planetRadius <= 0.0) return z;
+        return planetRadius * z / (planetRadius + z);
     }
 
-    /// <summary>Standard pressure (Pa) at geometric altitude z (m).</summary>
-    public static double Pressure(double z)
+    /// <summary>Standard temperature (K) at geopotential altitude h (m).</summary>
+    public static double Temperature(double h)
     {
-        z = Math.Clamp(z, 0.0, BaseAltitude[^1]);
-        int b = LayerIndex(z);
-        return PressureWithinLayer(b, BasePressure[b], z);
+        h = Math.Clamp(h, 0.0, BaseAltitude[^1]);
+        int b = LayerIndex(h);
+        return BaseTemperature[b] + LapseRate[b] * (h - BaseAltitude[b]);
     }
 
-    /// <summary>Standard air density (kg m^-3) at geometric altitude z (m).</summary>
-    public static double Density(double z) =>
-        Pressure(z) / (PhysicalConstants.DryAirGasConstant * Temperature(z));
+    /// <summary>Standard temperature (K) at <em>geometric</em> altitude z (m).</summary>
+    public static double Temperature(double z, double planetRadius) =>
+        Temperature(GeopotentialAltitude(z, planetRadius));
+
+    /// <summary>Standard pressure (Pa) at geopotential altitude h (m).</summary>
+    public static double Pressure(double h)
+    {
+        h = Math.Clamp(h, 0.0, BaseAltitude[^1]);
+        int b = LayerIndex(h);
+        return PressureWithinLayer(b, BasePressure[b], h);
+    }
+
+    /// <summary>Standard pressure (Pa) at <em>geometric</em> altitude z (m).</summary>
+    public static double Pressure(double z, double planetRadius) =>
+        Pressure(GeopotentialAltitude(z, planetRadius));
+
+    /// <summary>Standard air density (kg m^-3) at geopotential altitude h (m).</summary>
+    public static double Density(double h) =>
+        Pressure(h) / (PhysicalConstants.DryAirGasConstant * Temperature(h));
+
+    /// <summary>Standard air density (kg m^-3) at <em>geometric</em> altitude z (m).</summary>
+    public static double Density(double z, double planetRadius) =>
+        Density(GeopotentialAltitude(z, planetRadius));
 }

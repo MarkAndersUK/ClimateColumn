@@ -84,6 +84,10 @@ public static class Reporting
         if (o.SphericalGeometry)
             sb.AppendLine($"  geometry                  : spherical, r = {o.PlanetRadius / 1000.0:F0} km  " +
                           $"(top shell area x{result.Column.TopGeometricFactor:F4})");
+        if (o.VariableGravity)
+            sb.AppendLine($"  gravity                   : {PhysicalConstants.Gravity:F4} -> " +
+                          $"{o.GravityAt(o.TopAltitude):F4} m/s2 over {o.TopAltitude / 1000.0:F0} km  " +
+                          $"(top geopotential {StandardAtmosphere.GeopotentialAltitude(o.TopAltitude, o.PlanetRadius) / 1000.0:F2} km)");
         if (o.SurfaceMoistureAvailability > 0.0)
             sb.AppendLine($"  moisture availability / RH: {o.SurfaceMoistureAvailability:F2} / {o.NearSurfaceRelativeHumidity:F2}");
 

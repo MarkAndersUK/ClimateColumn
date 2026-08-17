@@ -39,13 +39,21 @@ public sealed class Column
         var segments = new Segment[n];
         double totalMass = 0.0;
 
+        // With gravity held constant, geometric and geopotential altitude coincide and the
+        // standard atmosphere is read directly. With it varying, the altitudes are geometric and
+        // have to be converted to the geopotential altitude the standard's tables are defined on.
+        double radius = options.VariableGravity ? options.PlanetRadius : 0.0;
+
         for (int i = 0; i < n; i++)
         {
             double zb = i * dz;
             double zt = (i + 1) * dz;
-            double pb = StandardAtmosphere.Pressure(zb);
-            double pt = StandardAtmosphere.Pressure(zt);
-            double mass = (pb - pt) / PhysicalConstants.Gravity;
+            double pb = StandardAtmosphere.Pressure(zb, radius);
+            double pt = StandardAtmosphere.Pressure(zt, radius);
+
+            // Hydrostatic balance, dp = -rho g dz, so the mass holding up a given pressure drop
+            // is dp / g. Weaker gravity aloft therefore means more mass per unit pressure drop.
+            double mass = (pb - pt) / options.GravityAt(0.5 * (zb + zt));
             totalMass += mass;
 
             segments[i] = new Segment
@@ -58,7 +66,7 @@ public sealed class Column
                 MassPerArea = mass,
                 ShellVolumeFactor = ShellVolumeFactor(options, zb, zt),
                 Temperature = options.InitialiseFromStandardAtmosphere
-                    ? StandardAtmosphere.Temperature(0.5 * (zb + zt))
+                    ? StandardAtmosphere.Temperature(0.5 * (zb + zt), radius)
                     : options.EmissionTemperature
             };
         }

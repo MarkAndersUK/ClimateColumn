@@ -326,8 +326,39 @@ public sealed class ModelOptions
     /// </remarks>
     public bool SphericalGeometry { get; set; } = false;
 
-    /// <summary>Planet radius used when <see cref="SphericalGeometry"/> is set, m.</summary>
+    /// <summary>
+    /// Let gravity fall with height by the inverse-square law rather than holding it at its
+    /// sea-level value.
+    /// </summary>
+    /// <remarks>
+    /// Two things follow, and they pull the same way. The standard atmosphere's tables are
+    /// defined on <em>geopotential</em> altitude, so the profile is read at
+    /// <c>H = r_0 z / (r_0 + z)</c> rather than at z - pressure falls off more slowly with
+    /// geometric height. And a segment's mass is dp / g(z) rather than dp / g_0, so weaker
+    /// gravity aloft means more mass is needed to hold up the same pressure drop.
+    ///
+    /// Kept separate from <see cref="SphericalGeometry"/> although the two are physically
+    /// companions - an inverse-square field is what a spherical planet has. Separating them
+    /// makes it possible to see which of the two corrections is doing what, and they turn out to
+    /// have opposite signs.
+    ///
+    /// Off by default: like sphericity, it shifts the documented equilibrium.
+    /// </remarks>
+    public bool VariableGravity { get; set; } = false;
+
+    /// <summary>
+    /// Planet radius used by <see cref="SphericalGeometry"/> and
+    /// <see cref="VariableGravity"/>, m.
+    /// </summary>
     public double PlanetRadius { get; set; } = PhysicalConstants.EarthRadius;
+
+    /// <summary>
+    /// Gravity at <paramref name="altitude"/> for this configuration - the sea-level constant
+    /// unless <see cref="VariableGravity"/> is set.
+    /// </summary>
+    public double GravityAt(double altitude) => VariableGravity
+        ? PhysicalConstants.GravityAt(altitude, PlanetRadius)
+        : PhysicalConstants.Gravity;
 
     /// <summary>Near-surface wind speed used in the Koenigsberger h_c relation, m s^-1.</summary>
     public double WindSpeed { get; set; } = 3.0;

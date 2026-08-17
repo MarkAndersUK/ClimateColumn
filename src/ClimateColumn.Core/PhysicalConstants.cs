@@ -72,6 +72,32 @@ public static class PhysicalConstants
     /// <summary>Earth's mean radius, m - the reference radius for spherical geometry.</summary>
     public const double EarthRadius = 6.371e6;
 
+    /// <summary>
+    /// Gravitational acceleration at altitude <paramref name="altitude"/> above a planet of
+    /// radius <paramref name="planetRadius"/>, m s^-2: the inverse-square law
+    /// <c>g(z) = g_0 (r_0 / (r_0 + z))^2</c>.
+    /// </summary>
+    /// <remarks>
+    /// A 1.6% fall over 50 km on Earth. Only the exterior field is used - the model has no
+    /// atmosphere-in-the-interior case - so this ignores the (tiny) mass of air below the level
+    /// in question, which by the shell theorem would add to the enclosed mass.
+    /// </remarks>
+    public static double GravityAt(double altitude, double planetRadius = EarthRadius)
+    {
+        if (planetRadius <= 0.0) return Gravity;
+
+        double ratio = planetRadius / (planetRadius + altitude);
+        return Gravity * ratio * ratio;
+    }
+
+    /// <summary>
+    /// Dry adiabatic lapse rate at altitude, K m^-1. Falls with gravity, since it is g / c_p:
+    /// 9.761 K km^-1 at the surface against 9.609 at 50 km on Earth.
+    /// </summary>
+    public static double DryAdiabaticLapseRateAt(
+        double altitude, double planetRadius = EarthRadius) =>
+        GravityAt(altitude, planetRadius) / DryAirSpecificHeat;
+
     /// <summary>Seconds in a day.</summary>
     public const double SecondsPerDay = 86400.0;
 }

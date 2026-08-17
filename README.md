@@ -206,6 +206,62 @@ integrates the *original* spherical equation with fourth-order Runge–Kutta and
 $G$ reformulation is verified rather than assumed; inverting the factor's sign fails five tests,
 including all three integration cases.
 
+### Gravity falling with height
+
+`--variable-gravity` replaces the sea-level constant with the inverse-square law,
+$g(z) = g_0\bigl(r_0/(r_0+z)\bigr)^2$ — 9.8066 m s⁻² at the surface, 9.6545 at 50 km, a fall of
+1.55 %.
+
+The subtlety is not $g$ but where it belongs. **The U.S. Standard Atmosphere is defined on
+*geopotential* altitude** with gravity fixed at the defined constant $g_0$. That is not a
+simplification in the standard — it is how the standard absorbs the variation of gravity, by
+measuring height in work done against gravity rather than in metres:
+
+$$
+\Phi(z) = \int_0^z g_0\left(\frac{r_0}{r_0+z'}\right)^{2}\mathrm{d}z' = \frac{g_0 r_0 z}{r_0+z},
+\qquad
+H \equiv \frac{\Phi}{g_0} = \frac{r_0 z}{r_0 + z}
+$$
+
+so 50 geometric km is **49.61 geopotential km**. Switching gravity on therefore changes two
+things together:
+
+- The profile is read at $H$ rather than at $z$, so pressure falls off more slowly with
+  geometric height.
+- A segment's mass is $\mathrm{d}p/g(z)$ rather than $\mathrm{d}p/g_0$ — weaker gravity aloft
+  means more mass is needed to hold up the same pressure drop.
+
+Those two have to be *mutually* consistent, and that consistency is the real content of the
+change. Because $\mathrm{d}H/\mathrm{d}z = g/g_0$, reading the tables at $H$ and dividing by the
+local $g$ reproduces $\mathrm{d}p/\mathrm{d}z = -\rho g$ exactly. The test that checks it
+compares each segment's density from the mass grid against the ideal gas law applied to the
+profile it was built from: pairing the geopotential grid with a constant $g$ leaves a ~1.5 %
+residue, and does fail.
+
+Optical depths are again untouched — they are normalised to a prescribed column total — though
+the mass *distribution* shifts very slightly upward. The column gains about 0.25 % mass overall,
+weighted by where the air actually is rather than the full 1.55 % available at the top.
+
+**The finding worth keeping.** Gravity and sphericity move the surface in **opposite**
+directions and very nearly cancel:
+
+| configuration | $T_s$ (K) | shift |
+|---|---:|---:|
+| plane-parallel, constant $g$ (default) | 286.797 | — |
+| `--variable-gravity` | 286.809 | **+0.012 K** |
+| `--spherical` | 286.781 | **−0.016 K** |
+| `--spherical --variable-gravity` | 286.794 | **−0.003 K** |
+
+Variable gravity puts more mass in the column and warms it; sphericity puts more *emitting* mass
+aloft and cools it. Either alone overstates the combined correction by roughly fivefold, which is
+why they are separate flags rather than one folded into the other — `--spherical
+--variable-gravity` is the physically complete pairing, and the individual flags exist to show
+which term does what.
+
+One thing the relaxation does **not** reach: the dry adiabat $g/c_p$ falls from 9.761 to
+9.609 K km⁻¹, but the convective adjustment runs on the prescribed critical lapse rate of
+6.5 K km⁻¹, not on $g/c_p$, so convection does not see it.
+
 ### Beyond the grey column
 
 Four optional pieces of physics, all off by default, so the baseline above is unchanged
@@ -840,7 +896,8 @@ that drawing path verifiable and gives documentation shots a way to include it.
                            0 disables evaporation, 1 is open water
 --humidity X               near-surface relative humidity, 0-1    (0.8)
 --spherical                spherical shells, not plane-parallel   (off)
---planet-radius-km X       radius used by --spherical             (6371)
+--variable-gravity         g falls as 1/r^2; geopotential grid    (off)
+--planet-radius-km X       radius for the two above               (6371)
 --lapse-rate X             critical lapse rate, K/km              (6.5)
 --surface-heat-capacity X  J/m2/K                                 (4.18e7)
 --max-steps N              iteration cap                          (500000)
@@ -1006,14 +1063,15 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 - **Local thermodynamic equilibrium is assumed** — the source function is the Planck function
   everywhere. True below about 60 km, so the 50 km model top keeps it safe, but it is an
   assumption rather than a result.
-- **Sphericity is off by default, and partial when on.** `--spherical` adds the shell-area
-  and $-(2/r)F$ terms, but three related things do not follow: gravity is held at its
-  sea-level value, so the dry adiabat $g/c_p$ does not fall by its 1.6 % over 50 km (the
-  critical lapse rate is prescribed anyway); the solar interception uses the surface
-  cross-section $\pi r_0^2$ rather than the top-of-atmosphere $\pi r_\text{top}^2$; and the
-  shell factor is held constant across each segment rather than integrated within it.
-  Horizontal transport is absent in either geometry — this is a single column, not a sphere
-  of columns.
+- **Sphericity and variable gravity are off by default, and partial when on.** `--spherical`
+  adds the shell-area and $-(2/r)F$ terms; `--variable-gravity` adds the inverse-square law and
+  the geopotential grid. What still does not follow: the solar interception uses the surface
+  cross-section $\pi r_0^2$ rather than the top-of-atmosphere $\pi r_\text{top}^2$; the shell
+  factor is held constant across each segment rather than integrated within it; the dry adiabat's
+  1.55 % relaxation does not reach the convection scheme, which runs on a prescribed critical
+  lapse rate; and the exterior field is used throughout, ignoring the air mass below a given
+  level, which by the shell theorem would add to the enclosed mass. Horizontal transport is
+  absent in every geometry — this is a single column, not a sphere of columns.
 - **The angular integral is collapsed onto one number.** The exact hemispheric flux is
   $2\pi\int_0^1 I(z,\mu)\,\mu\,\mathrm{d}\mu$; the solver replaces it with a single $D$. The
   exact $2E_3(\tau)$ transmission exists in the test suite as a reference and is never used by
