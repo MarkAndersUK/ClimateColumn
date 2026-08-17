@@ -1,5 +1,9 @@
 # ClimateColumn
 
+[![Licence: MIT](https://img.shields.io/badge/Licence-MIT-blue.svg)](LICENSE)
+[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![Tests: 323](https://img.shields.io/badge/tests-323%20passing-brightgreen.svg)](#verification)
+
 A one-dimensional radiative–convective climate model of a vertical column of atmosphere,
 written in C# (.NET 8). The column is divided into segments; longwave emission from each
 segment is the **Koenigsberger equation** and the surface radiates by **Stefan–Boltzmann**.
