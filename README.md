@@ -111,6 +111,34 @@ That is implicit in $T_s$ and has to be solved for, which makes it a **stronger*
 the flat-window version, where $f$ was simply whatever the caller passed in. It still
 recovers the classic $2^{1/4}T_e$ for no window.
 
+**The window is not actually transparent** (`--continuum-tau`, `--continuum-foreign`). What
+closes it over the humid tropics is the water-vapour continuum — absorption between the lines,
+conventionally split into a self term going as vapour pressure squared and a foreign term
+going as vapour pressure times air pressure,
+
+$$k \sim e\left(C_s e + C_f p\right).$$
+
+Both scalings are reproduced, with `--continuum-foreign` setting their balance at the
+reference state. Strength is one tunable number rather than fitted MT_CKD coefficients — the
+rest of the model is grey, so spectral coefficients here would be false precision.
+
+The quadratic self term is the behaviour that matters. Warm the column, Clausius–Clapeyron
+raises the vapour, and the continuum grows as roughly its square, so **the window shuts as
+the climate warms** — something a fixed transparent window can never do. Doubling the vapour
+multiplies the continuum by $f\cdot 2 + (1-f)\cdot 4$, which the tests assert exactly for
+$f = 0, 0.25, 0.5, 1$.
+
+Given a continuum the window becomes a genuine second band that absorbs and emits, so the
+solver now runs both bands through the same recurrence and sums them. That reduces *exactly*
+to the transparent case at zero continuum — a band with $\tau = 0$ has unit transmittance, so
+it neither absorbs nor emits — which is asserted bit-identically rather than to a tolerance.
+
+One consequence is worth knowing: an opaque continuum traps only about half the window flux,
+not nearly all of it. Because the continuum follows the vapour and the self term squares it,
+it is heavily bottom-heavy, so the window goes opaque close to the ground and keeps emitting
+from air only a little cooler than the surface. More continuum raises that emission level
+slowly, so the trapped fraction climbs monotonically but never approaches one.
+
 One clean identity is genuinely lost. Under a flat fraction the instantaneous forcing scaled
 as exactly $(1-f)$, because $f$ factored out of every source term. It no longer does. It is
 tempting to assume the suppression must then be bracketed by $(1-f)$ at the profile's
@@ -160,6 +188,8 @@ against results derived independently of the code:
 | $N$ opaque slabs | $T_s = (N{+}1)^{1/4}T_e$, layer $k$ from top at $k^{1/4}T_e$ | ✓ for $N = 1,2,4$ |
 | Opaque slab under a window | $T_s = \left(2/(1{+}f(T_s))\right)^{1/4}T_e$, solved implicitly | ✓ for no window, 8–13 µm, 8–20 µm |
 | Fractional Planck function | 8–13 µm holds 31.05 % at 287 K, 19.98 % at 217 K | within 0.002 |
+| Zero continuum | window band must stay exactly transparent | bit-identical |
+| Continuum vapour scaling | doubling vapour multiplies it by $f\cdot2+(1-f)\cdot4$ | exact to 10⁻⁶ |
 | Grey radiative equilibrium | $\sigma T_s^4 = F_0\left(1 + \tau/2\right)$ | within 0.05 K for $\tau = 0.5, 1.8, 4$ |
 | Thin-layer limit | $2\left(1-e^{-\tau}\right)\sigma T^4 \to 4\varepsilon'\sigma T^4\mathrm{d}z$ only at $D = 2$ | ratio 1.000 at $D{=}2$, 0.830 at $D{=}1.66$ |
 | Isothermal subdivision | slicing one isothermal slab must not change any flux | bit-identical for $n = 1 \ldots 256$ |
@@ -382,6 +412,8 @@ that drawing path verifiable and gives documentation shots a way to include it.
 --co2-scenario A,B,C       equilibrium at each ppm, with forcings
 --window-from-um X         transparent window, short edge, um     (none)
 --window-to-um X           transparent window, long edge, um      (none)
+--continuum-tau X          water-vapour continuum in the window   (0)
+--continuum-foreign X      foreign share of the continuum         (0.5)
 --pressure-broadening N    dry absorber ~ rho (p/p0)^N            (0)
 --ozone-fraction X         share of atm. solar into ozone layer   (0)
 --ozone-altitude-km X      Chapman layer peak altitude            (25)
@@ -486,11 +518,13 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 - **Grey, or at best two-band.** The window splits the spectrum into one grey band and one
   transparent one; that is still nothing like a real absorption spectrum. It is why the raw
   doubling forcing is an order of magnitude too large, and why the CO₂ runs above have to
-  be calibrated against a known forcing rather than predicting one. The window's *share* is
-  now computed properly from the Planck function, but the window itself is still perfectly
-  transparent — the water-vapour continuum that actually closes the 8–13 µm window in the
-  humid tropics is absent, so the window never shuts. Within the grey band, line structure is
-  ignored entirely; a k-distribution is what a rigorous treatment would need.
+  be calibrated against a known forcing rather than predicting one. The window's *share* now
+  follows the Planck function and the window can close via the continuum, but within each of
+  the two bands line structure is ignored entirely; a k-distribution is what a rigorous
+  treatment would need.
+- **The continuum's strength is tuned, not derived.** Its two scalings are physical, but the
+  magnitude is one free parameter rather than fitted MT_CKD coefficients, and it is applied
+  only inside the window rather than across the spectrum.
 - **The diffusivity is band-independent.** $D = 2$ is exact in the optically *thin* limit,
   which makes it the worst choice for opaque band centres. One $D$ cannot be right for bands
   spanning $\tau \ll 1$ to $\tau \gg 1$; the exact $2E_3(\tau)$ transmission would be needed.

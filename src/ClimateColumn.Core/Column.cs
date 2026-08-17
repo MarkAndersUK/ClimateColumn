@@ -116,6 +116,71 @@ public sealed class Column
         {
             s.EmissionCoefficient = cDry * DryWeight(s) + cWv * WaterVapourWeight(s);
         }
+
+        DistributeWindowContinuum(WaterVapourWeight);
+    }
+
+    /// <summary>
+    /// Assign the window's continuum extinction, m^-1, to each segment.
+    /// </summary>
+    /// <remarks>
+    /// The continuum is conventionally split into a self term going as the vapour pressure
+    /// squared and a foreign term going as vapour pressure times air pressure. Both scalings
+    /// appear here: the self part is quadratic in the vapour profile weight, the foreign part
+    /// is linear in it and in p/p0. Each part is normalised so that at the reference
+    /// temperature the column continuum optical depth is exactly
+    /// Options.WindowContinuumOpticalDepth, divided between the two by
+    /// Options.ContinuumForeignFraction.
+    ///
+    /// The Clausius-Clapeyron factor then enters linearly in the foreign term and quadratically
+    /// in the self term, which is what makes the window shut as the column warms rather than
+    /// staying open forever.
+    /// </remarks>
+    private void DistributeWindowContinuum(Func<Segment, double> vapourWeight)
+    {
+        if (!Options.HasWindowContinuum)
+        {
+            foreach (var s in Segments) s.WindowEmissionCoefficient = 0.0;
+            return;
+        }
+
+        double d2 = PhysicalConstants.KoenigsbergerDiffusivity;
+        double p0 = Segments.Length > 0 ? Segments[0].BottomPressure : 0.0;
+
+        // Amplification of the vapour relative to the reference state, from Clausius-Clapeyron.
+        double scale = Options.WaterVapourOpticalDepth > 0
+            ? CurrentWaterVapourOpticalDepth() / Options.WaterVapourOpticalDepth
+            : 0.0;
+
+        double Self(Segment s) => vapourWeight(s) * vapourWeight(s);
+        double Foreign(Segment s) => p0 > 0 ? vapourWeight(s) * (s.MidPressure / p0) : 0.0;
+
+        double selfColumn = 0.0, foreignColumn = 0.0;
+        foreach (var s in Segments)
+        {
+            selfColumn += Self(s) * s.Thickness;
+            foreignColumn += Foreign(s) * s.Thickness;
+        }
+
+        double foreignTarget = Options.WindowContinuumOpticalDepth * Options.ContinuumForeignFraction;
+        double selfTarget = Options.WindowContinuumOpticalDepth - foreignTarget;
+
+        double cSelf = selfColumn > 0 ? selfTarget / (d2 * selfColumn) : 0.0;
+        double cForeign = foreignColumn > 0 ? foreignTarget / (d2 * foreignColumn) : 0.0;
+
+        foreach (var s in Segments)
+        {
+            s.WindowEmissionCoefficient =
+                cSelf * scale * scale * Self(s) + cForeign * scale * Foreign(s);
+        }
+    }
+
+    /// <summary>Total hemispheric optical depth of the window band.</summary>
+    public double TotalWindowOpticalDepth()
+    {
+        double sum = 0.0;
+        foreach (var s in Segments) sum += s.WindowOpticalThickness(Options.Diffusivity);
+        return sum;
     }
 
     /// <summary>

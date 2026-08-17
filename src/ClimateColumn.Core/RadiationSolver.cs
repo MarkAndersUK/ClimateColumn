@@ -15,8 +15,14 @@ public sealed class RadiationResult
     /// <summary>Longwave flux convergence into each segment, W m^-2 (positive = warming).</summary>
     public required double[] RadiativeHeating { get; init; }
 
-    /// <summary>Hemispheric optical thickness of each segment.</summary>
+    /// <summary>Hemispheric optical thickness of each segment in the absorbing band.</summary>
     public required double[] OpticalThickness { get; init; }
+
+    /// <summary>
+    /// Hemispheric optical thickness of each segment inside the spectral window. All zeros
+    /// unless a water-vapour continuum has been configured.
+    /// </summary>
+    public required double[] WindowOpticalThickness { get; init; }
 
     /// <summary>Emission actually used by the solver, up + down, per segment, W m^-2.</summary>
     public required double[] SegmentEmission { get; init; }
@@ -67,9 +73,21 @@ public sealed class RadiationResult
 /// therefore carries its own weight (1 - f(T)), and the surface splits its emission by
 /// f(T_s). Each emitter still divides exactly its own sigma T^4 between band and window, so
 /// energy closure is unaffected.
+///
+/// The window is not necessarily transparent: given a water-vapour continuum it absorbs and
+/// emits like any other band. Both bands therefore run through the same recurrence and their
+/// fluxes are summed, which reduces exactly to the transparent case when the continuum is
+/// zero - a band with tau = 0 has unit transmittance, so it neither absorbs nor emits and the
+/// surface's window emission passes straight through to space.
 /// </summary>
 public static class RadiationSolver
 {
+    /// <summary>
+    /// One spectral band: the share of each emitter's Planck function it carries, and the
+    /// optical thickness the radiation sees inside it.
+    /// </summary>
+    private readonly record struct Band(double[] Share, double[] Tau);
+
     public static RadiationResult Solve(Column column)
     {
         int n = column.Count;
@@ -77,76 +95,103 @@ public static class RadiationSolver
         double d = options.Diffusivity;
         var segments = column.Segments;
 
-        var tau = new double[n];
-        var transmittance = new double[n];
-        var absorptivity = new double[n];
         var blackbody = new double[n];
+        for (int i = 0; i < n; i++) blackbody[i] = segments[i].BlackbodyEmissivePower;
 
-        // In-band share of each segment's own Planck function.
-        var band = new double[n];
+        // Two bands: the absorbing band, and the window. Running both through the same
+        // recurrence is what lets the window absorb and emit once it has a continuum, and it
+        // reduces to the transparent case exactly when the continuum is zero - a band with
+        // tau = 0 has unit transmittance, so it neither absorbs nor emits and the surface's
+        // window emission passes straight through.
+        var absorbing = new Band(new double[n], new double[n]);
+        var window = new Band(new double[n], new double[n]);
 
         for (int i = 0; i < n; i++)
         {
-            tau[i] = segments[i].OpticalThickness(d);
-            transmittance[i] = Math.Exp(-tau[i]);
-            absorptivity[i] = 1.0 - transmittance[i];
-            blackbody[i] = segments[i].BlackbodyEmissivePower;
-            band[i] = 1.0 - options.WindowShare(segments[i].Temperature);
+            double share = options.WindowShare(segments[i].Temperature);
+            window.Share[i] = share;
+            absorbing.Share[i] = 1.0 - share;
+
+            absorbing.Tau[i] = segments[i].OpticalThickness(d);
+            window.Tau[i] = segments[i].WindowOpticalThickness(d);
         }
 
-        var down = new double[n + 1];
+        double surfaceWindowShare = options.WindowShare(column.SurfaceTemperature);
+        var surfaceShare = new[] { 1.0 - surfaceWindowShare, surfaceWindowShare };
+        var bands = new[] { absorbing, window };
+
         var up = new double[n + 1];
+        var down = new double[n + 1];
+        var heating = new double[n];
+        var emission = new double[n];
+        var absorbed = new double[n];
 
-        // Downward stream: no longwave enters the top of the column. Only the grey band
-        // carries a downward flux - the atmosphere cannot emit into the window.
-        down[n] = 0.0;
-        for (int i = n - 1; i >= 0; i--)
-        {
-            down[i] = down[i + 1] * transmittance[i] + absorptivity[i] * band[i] * blackbody[i];
-        }
-
-        // Surface: Stefan-Boltzmann emission plus specular reflection of the back radiation.
-        // The up recurrence carries the grey band only; the window share of the surface
-        // emission passes through untouched and is added onto the reported fluxes below.
         double epsS = options.SurfaceEmissivity;
         double surfaceBlackbody = PhysicalConstants.StefanBoltzmann *
                                   Math.Pow(column.SurfaceTemperature, 4);
-        double surfaceWindow = options.WindowShare(column.SurfaceTemperature);
 
-        double windowFlux = epsS * surfaceWindow * surfaceBlackbody;
-        up[0] = epsS * (1.0 - surfaceWindow) * surfaceBlackbody + (1.0 - epsS) * down[0];
-
-        for (int i = 0; i < n; i++)
+        for (int b = 0; b < bands.Length; b++)
         {
-            up[i + 1] = up[i] * transmittance[i] + absorptivity[i] * band[i] * blackbody[i];
+            var (share, tau) = bands[b];
+
+            var transmittance = new double[n];
+            var absorptivity = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                transmittance[i] = Math.Exp(-tau[i]);
+                absorptivity[i] = 1.0 - transmittance[i];
+            }
+
+            var bandDown = new double[n + 1];
+            var bandUp = new double[n + 1];
+
+            // No longwave enters the top of the column, in any band.
+            bandDown[n] = 0.0;
+            for (int i = n - 1; i >= 0; i--)
+            {
+                bandDown[i] = bandDown[i + 1] * transmittance[i] +
+                              absorptivity[i] * share[i] * blackbody[i];
+            }
+
+            // Surface: this band's share of the Stefan-Boltzmann emission, plus specular
+            // reflection of the back radiation arriving in this band.
+            bandUp[0] = epsS * surfaceShare[b] * surfaceBlackbody + (1.0 - epsS) * bandDown[0];
+
+            for (int i = 0; i < n; i++)
+            {
+                bandUp[i + 1] = bandUp[i] * transmittance[i] +
+                                absorptivity[i] * share[i] * blackbody[i];
+            }
+
+            for (int i = 0; i <= n; i++)
+            {
+                up[i] += bandUp[i];
+                down[i] += bandDown[i];
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                absorbed[i] += absorptivity[i] * (bandUp[i] + bandDown[i + 1]);
+
+                // Emission is shared equally between the two hemispheres.
+                emission[i] += 2.0 * absorptivity[i] * share[i] * blackbody[i];
+            }
         }
-
-        var heating = new double[n];
-        var emission = new double[n];
-        var koenigsberger = new double[n];
-        var absorbed = new double[n];
-
-        for (int i = 0; i < n; i++)
-        {
-            // Absorption sees only the in-band incident fluxes, so it is computed before
-            // the window flux is folded into the upward stream.
-            absorbed[i] = absorptivity[i] * (up[i] + down[i + 1]);
-
-            // Emission is shared equally between the two hemispheres.
-            emission[i] = 2.0 * absorptivity[i] * band[i] * blackbody[i];
-            koenigsberger[i] = segments[i].KoenigsbergerEmission;
-        }
-
-        for (int i = 0; i <= n; i++) up[i] += windowFlux;
 
         var net = new double[n + 1];
         for (int i = 0; i <= n; i++) net[i] = up[i] - down[i];
 
+        var koenigsberger = new double[n];
+        var totalTau = new double[n];
         for (int i = 0; i < n; i++)
         {
-            // Flux convergence: what enters the segment from below and above minus what
-            // leaves. The window flux is the same at every interface and cancels here.
+            // Flux convergence: what enters the segment from below and above minus what leaves.
             heating[i] = net[i] - net[i + 1];
+            koenigsberger[i] = segments[i].KoenigsbergerEmission;
+
+            // Reported per-segment thickness is the absorbing band's, which is what the
+            // Koenigsberger correspondence is about; read the window's back from the column.
+            totalTau[i] = absorbing.Tau[i];
         }
 
         return new RadiationResult
@@ -155,10 +200,11 @@ public static class RadiationSolver
             DownwardFlux = down,
             NetUpwardFlux = net,
             RadiativeHeating = heating,
-            OpticalThickness = tau,
+            OpticalThickness = totalTau,
             SegmentEmission = emission,
             KoenigsbergerEmission = koenigsberger,
-            SegmentAbsorption = absorbed
+            SegmentAbsorption = absorbed,
+            WindowOpticalThickness = window.Tau
         };
     }
 

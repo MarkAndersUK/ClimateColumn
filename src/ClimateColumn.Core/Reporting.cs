@@ -93,6 +93,17 @@ public static class Reporting
                           $"  (of the surface's own emission)");
             sb.AppendLine($"    ... share at column top : {o.WindowShare(result.Column.Segments[^1].Temperature):F3}" +
                           $"  (colder, so a smaller share)");
+
+            if (o.HasWindowContinuum)
+            {
+                sb.AppendLine($"    ... continuum tau      : {result.Column.TotalWindowOpticalDepth():F4} now  " +
+                              $"({o.WindowContinuumOpticalDepth:F4} at {o.WaterVapourReferenceTemperature:F2} K, " +
+                              $"foreign share {o.ContinuumForeignFraction:F2})");
+            }
+            else
+            {
+                sb.AppendLine("    ... continuum          :       none  (the window never closes)");
+            }
         }
         if (o.PressureBroadeningExponent > 0)
             sb.AppendLine($"  pressure broadening       : eps' ~ rho (p/p0)^{o.PressureBroadeningExponent:F2}");

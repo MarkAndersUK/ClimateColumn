@@ -239,6 +239,8 @@ public static class Program
             Co2AbsorberFraction = GetDouble(args, "co2-fraction", 1.0),
             WindowShortWavelength = GetMicrons(args, "window-from-um", 0.0),
             WindowLongWavelength = GetMicrons(args, "window-to-um", 0.0),
+            WindowContinuumOpticalDepth = GetDouble(args, "continuum-tau", 0.0),
+            ContinuumForeignFraction = GetDouble(args, "continuum-foreign", 0.5),
             PressureBroadeningExponent = GetDouble(args, "pressure-broadening", 0.0),
             OzoneFraction = GetDouble(args, "ozone-fraction", 0.0),
             OzoneLayerAltitude = GetDouble(args, "ozone-altitude-km", 25.0) * 1000.0,
@@ -320,6 +322,8 @@ public static class Program
           --co2-scenario A,B,C       equilibrium at each ppm, with forcings
           --window-from-um X         transparent window, short edge, um     (none)
           --window-to-um X           transparent window, long edge, um      (none)
+          --continuum-tau X          water-vapour continuum in the window   (0)
+          --continuum-foreign X      foreign share of the continuum         (0.5)
           --pressure-broadening N    dry absorber ~ rho (p/p0)^N            (0)
           --ozone-fraction X         share of atm. solar into ozone layer   (0)
           --ozone-altitude-km X      Chapman layer peak altitude            (25)

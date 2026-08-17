@@ -51,10 +51,20 @@ public sealed class Segment
     public double ShortwaveAbsorbed { get; set; }
 
     /// <summary>
+    /// Volumetric extinction coefficient inside the spectral window, m^-1. Zero unless a
+    /// water-vapour continuum has been configured; the window is otherwise transparent.
+    /// </summary>
+    public double WindowEmissionCoefficient { get; set; }
+
+    /// <summary>
     /// Hemispheric optical thickness of the segment, D * eps' * dz, dimensionless.
     /// </summary>
     public double OpticalThickness(double diffusivity) =>
         diffusivity * EmissionCoefficient * Thickness;
+
+    /// <summary>Hemispheric optical thickness inside the window, dimensionless.</summary>
+    public double WindowOpticalThickness(double diffusivity) =>
+        diffusivity * WindowEmissionCoefficient * Thickness;
 
     /// <summary>Blackbody emissive power sigma T^4 (Stefan-Boltzmann), W m^-2.</summary>
     public double BlackbodyEmissivePower =>

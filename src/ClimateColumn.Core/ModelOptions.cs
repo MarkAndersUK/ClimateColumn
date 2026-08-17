@@ -134,6 +134,46 @@ public sealed class ModelOptions
     /// <summary>Long-wavelength edge of the transparent spectral window, m.</summary>
     public double WindowLongWavelength { get; set; } = 0.0;
 
+    /// <summary>
+    /// Column optical depth of the water-vapour continuum inside the window, evaluated at
+    /// <see cref="WaterVapourReferenceTemperature"/>. 0 (the default) leaves the window
+    /// perfectly transparent. Requires <see cref="WaterVapourOpticalDepth"/> to be non-zero -
+    /// it is a vapour continuum, so there has to be vapour.
+    /// </summary>
+    /// <remarks>
+    /// The window is not actually transparent. What closes it over the humid tropics is the
+    /// water-vapour continuum: broad absorption between the lines, conventionally split into a
+    /// self term going as the vapour pressure squared and a foreign term going as vapour
+    /// pressure times air pressure,
+    ///
+    ///     k ~ e (C_s e + C_f p).
+    ///
+    /// Both scalings are reproduced here, with <see cref="ContinuumForeignFraction"/> setting
+    /// their balance at the reference state, but the strength is a single tunable number rather
+    /// than fitted MT_CKD coefficients - the rest of the model is grey, so pretending to
+    /// spectral accuracy here would be false precision.
+    ///
+    /// The quadratic self term is the important behaviour: warm the column and
+    /// Clausius-Clapeyron raises the vapour, and the continuum grows as roughly its square.
+    /// The window therefore shuts as the climate warms, which a fixed transparent window can
+    /// never do.
+    /// </remarks>
+    public double WindowContinuumOpticalDepth { get; set; } = 0.0;
+
+    /// <summary>
+    /// Share of the window continuum coming from the foreign (pressure-broadened) term at the
+    /// reference state; the rest comes from the self term. 0.5 by default.
+    /// </summary>
+    /// <remarks>
+    /// The two terms respond differently to warming. The foreign term is linear in vapour, the
+    /// self term quadratic, so this sets how sharply the window closes as the column warms.
+    /// </remarks>
+    public double ContinuumForeignFraction { get; set; } = 0.5;
+
+    /// <summary>True when a continuum has been configured inside the window.</summary>
+    public bool HasWindowContinuum =>
+        HasWindow && WindowContinuumOpticalDepth > 0.0 && WaterVapourOpticalDepth > 0.0;
+
     /// <summary>True when a window of non-zero width has been configured.</summary>
     public bool HasWindow => WindowLongWavelength > WindowShortWavelength;
 
@@ -267,6 +307,18 @@ public sealed class ModelOptions
         if (WindowLongWavelength > 0 && WindowLongWavelength <= WindowShortWavelength)
             throw new ArgumentException(
                 "WindowLongWavelength must be greater than WindowShortWavelength.");
+        if (WindowContinuumOpticalDepth < 0)
+            throw new ArgumentException("WindowContinuumOpticalDepth must be >= 0.");
+        if (ContinuumForeignFraction is < 0 or > 1)
+            throw new ArgumentException("ContinuumForeignFraction must be in [0, 1].");
+        if (WindowContinuumOpticalDepth > 0 && WaterVapourOpticalDepth <= 0)
+            throw new ArgumentException(
+                "WindowContinuumOpticalDepth needs WaterVapourOpticalDepth to be non-zero: " +
+                "the continuum is a water-vapour continuum, so there has to be vapour to drive it.");
+        if (WindowContinuumOpticalDepth > 0 && !HasWindow)
+            throw new ArgumentException(
+                "WindowContinuumOpticalDepth needs a window to sit inside; set " +
+                "WindowShortWavelength and WindowLongWavelength.");
         if (Co2Concentration < 0) throw new ArgumentException("Co2Concentration must be >= 0.");
         if (Co2ReferenceConcentration <= 0)
             throw new ArgumentException("Co2ReferenceConcentration must be positive.");
