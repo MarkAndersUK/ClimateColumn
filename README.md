@@ -608,34 +608,41 @@ Practically, the agreement is under 0.01 K at the 425 ppm calibration point, 0.3
 unsound** unless you recalibrate `--co2-fraction` at the concentration you actually care
 about.
 
-#### The spectral configuration on the chart
+#### What the chart shows
 
-`Co2Sweep.SpectralBands()` adds a third curve driven by six molecules in eight bands derived from
-their own line strengths — so its CO₂ response comes out of the spectroscopy rather than being
-calibrated in. It returns null when the line lists have not been fetched, in which case the charts
-simply show two curves.
+`Co2Sweep.SpectralBands()` — six molecules in eight bands derived from their own line strengths, so
+the CO₂ response comes out of the spectroscopy rather than being calibrated in. **This is the only
+configuration plotted.** The calibrated grey ones are still swept, because the findings about them
+above are real, but a grey curve beside the spectral one invited the figure to be read as a
+comparison of two models rather than as one model against the forcing law it ought to follow.
 
-Over 285 → 1000 ppm:
+The dashed curve is **not** from the line data, and the chart says so. It is what the same
+configuration would give if its forcing followed the accepted $5.35\ln(C/C_0)$ at its own measured
+sensitivity — so the two coincide at the calibration point by construction and separate only where
+the model's forcing departs from logarithmic.
 
-| | warming | log expectation | overshoot |
+| relative to 285 ppm | model forcing | accepted | ratio |
 |---|---|---|---|
-| Grey, no vapour feedback | +4.60 K | +2.85 K | 1.75 K |
-| Grey, vapour feedback | +6.52 K | +4.46 K | 2.06 K |
-| **Derived from HITRAN bands** | **+5.69 K** | +4.29 K | **1.40 K** |
+| 350 ppm | 1.49 | 1.10 | 1.35 |
+| 500 ppm | 4.02 | 3.01 | 1.34 |
+| 700 ppm | 6.36 | 4.81 | 1.32 |
+| 1000 ppm | 8.84 | 6.72 | **1.32** |
 
-The spectral configuration's overshoot is the smallest of the three. Representing real line
-structure makes the concentration dependence **more nearly logarithmic** — which is what real gases
-do, and it is the clearest payoff in the whole model for having done the spectral work rather than
-tuning a grey knob. It is still an overshoot, so the model has not become right, only less wrong for
-a reason that is physical rather than fitted.
+**The shape is right; the scale is not.** The ratio is flat at ~1.33 across the whole range, and the
+warming ratio is 1.673 against the logarithmic prediction of 1.686. So the model's concentration
+*dependence* is close to logarithmic, as a real gas is — what is wrong is a near-uniform scale
+factor. That is a far more tractable failure than the calibrated grey model's, whose ratio grew from
+1.17 to 2.14 across the same span because its absorber was diluted rather than resolved.
 
-Two caveats, the same ones the derivation carries. Its absorber amounts are scaled to reach an
-Earth-like base state, exactly as the two grey configurations were, so the three are comparable in
-base state and differ in how they represent absorption. And its continuum is added rather than
-derived, because HITRAN's line lists do not contain one.
+Read it as spectroscopy, not prediction. The absorber amounts are scaled to reach an Earth-like
+present-day surface rather than taken from observed concentrations, and the continuum that closes
+the window is added rather than derived. What the line data determines is the *structure* — which
+bands exist, how opaque each is relative to the others, and the distribution of absorption inside
+each — and that structure is what makes the concentration dependence come out nearly right.
 
-The spectral sweep is nine equilibria at eight bands with four g-points each, which takes about
-30 seconds — most of the test suite's runtime.
+The charts skip rather than fall back when the line lists are absent: a figure captioned as spectral
+must not quietly show something else. The sweep is nine equilibria at eight bands with four g-points,
+about 30 seconds — most of the suite's runtime.
 
 #### Plotting it
 
@@ -823,6 +830,10 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
 - **The spectral chart series is scaled, not fitted.** Its absorber amounts reach an Earth-like base
   state by construction rather than from observed concentrations, and its continuum is added rather
   than derived, so its CO₂ response is spectroscopically grounded but not an independent estimate.
+- **The chart's reference cancels sensitivity out.** The dashed curve uses the model's own
+  d$T$/d$F$ — 0.639 K per W m⁻², measured from its 285→425 ppm step — so the comparison tests the
+  concentration dependence of the *forcing* alone. If the sensitivity were itself wrong, both curves
+  would be wrong together and the figure would look no different.
 - **Shortwave is still a single grey channel.** All the spectral work is on the longwave side;
   solar absorption is a prescribed fraction split by air mass and a Chapman profile.
 - **The diffusivity is band-independent.** $D = 2$ is exact in the optically *thin* limit,

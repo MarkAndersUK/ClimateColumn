@@ -38,11 +38,32 @@ public class Co2ChartTests
     /// <summary>The grey configurations, which the assertions below are about.</summary>
     private static IEnumerable<Co2Sweep> Sweeps => new[] { _noFeedback, _withFeedback };
 
-    /// <summary>Everything that goes on the chart, spectral series included when available.</summary>
-    private static Co2Sweep[] Plotted =>
-        _spectral is null
-            ? new[] { _noFeedback, _withFeedback }
-            : new[] { _noFeedback, _withFeedback, _spectral };
+    /// <summary>
+    /// What goes on the chart: the spectrally derived configuration alone.
+    /// </summary>
+    /// <remarks>
+    /// The grey configurations are still swept, because the findings about them below are real and
+    /// documented, but they are no longer plotted. The chart is about what the model does when its
+    /// absorption comes from line data; putting a calibrated grey curve beside it invited the figure
+    /// to be read as a comparison of two models rather than as one model against the forcing law it
+    /// ought to follow.
+    ///
+    /// With no HITRAN data there is nothing to plot, so the rendering tests skip rather than fall
+    /// back to a grey curve - a chart captioned as spectral must not quietly show something else.
+    /// </remarks>
+    private static Co2Sweep[] Plotted
+    {
+        get
+        {
+            if (_spectral is null)
+            {
+                Assert.Inconclusive(
+                    "No HITRAN data, so there is no spectral sweep to chart. Run " +
+                    "scripts/fetch-hitran.ps1 -Molecule all.");
+            }
+            return new[] { _spectral! };
+        }
+    }
 
     private static int Last => Co2Sweep.Concentrations.Length - 1;
 
@@ -280,9 +301,10 @@ public class Co2ChartTests
                 $"series {entry.GetProperty("id").GetString()} is the wrong length");
         }
 
-        // Spot-check that the values really are the model's, not a stale copy.
+        // Spot-check that the values really are the plotted model's, not a stale copy or a
+        // configuration that is no longer on the chart.
         double firstModelValue = series[0].GetProperty("values")[0].GetDouble();
-        Assert.AreEqual(_noFeedback.Points[0].SurfaceTemperature, firstModelValue, 1e-4,
+        Assert.AreEqual(Plotted[0].Points[0].SurfaceTemperature, firstModelValue, 1e-4,
             "the hover data should carry the same temperatures the lines were drawn from");
 
         // Each dot the script moves must exist in the SVG, keyed by series id.

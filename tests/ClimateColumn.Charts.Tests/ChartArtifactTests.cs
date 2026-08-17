@@ -35,18 +35,18 @@ public class ChartArtifactTests
         {
             if (_sweeps is not null) return _sweeps;
 
-            var all = new List<Co2Sweep>
-            {
-                Co2Sweep.NoFeedback(),
-                Co2Sweep.WithWaterVapourFeedback()
-            };
-
-            // Null unless the HITRAN line lists have been fetched, so the artifact carries two
-            // curves offline and three with the data.
+            // Only the spectrally derived configuration is charted. A calibrated grey curve beside
+            // it invited the figure to be read as a comparison of two models rather than as one
+            // model against the forcing law it ought to follow.
             var spectral = Co2Sweep.SpectralBands();
-            if (spectral is not null) all.Add(spectral);
+            if (spectral is null)
+            {
+                Assert.Inconclusive(
+                    "No HITRAN data, so there is no spectral sweep to chart. Run " +
+                    "scripts/fetch-hitran.ps1 -Molecule all.");
+            }
 
-            _sweeps = all.ToArray();
+            _sweeps = new[] { spectral! };
             return _sweeps;
         }
     }

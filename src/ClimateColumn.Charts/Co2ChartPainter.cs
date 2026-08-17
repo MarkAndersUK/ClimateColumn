@@ -144,7 +144,11 @@ public static class Co2ChartPainter
         {
             foreach (bool dashed in new[] { false, true })
             {
-                string text = dashed ? $"{sweeps[s].Label}, expected" : sweeps[s].Label;
+                // The dashed curve is a reference built from the accepted forcing law, not
+                // something the model produced, so it must not read as though it were.
+                string text = dashed
+                    ? $"{sweeps[s].Label} (logarithmic reference)"
+                    : $"{sweeps[s].Label} (model)";
                 var size = g.MeasureString(text, font);
 
                 // Wrap to a second row rather than run off the figure.
@@ -224,7 +228,7 @@ public static class Co2ChartPainter
         {
             int last = sweeps[s].Points.Count - 1;
             entries.Add((sweeps[s].Points[last].SurfaceTemperature, "model", s, Y(sweeps[s].Points[last].SurfaceTemperature)));
-            entries.Add((sweeps[s].Expected(last), "expected", s, Y(sweeps[s].Expected(last))));
+            entries.Add((sweeps[s].Expected(last), "log reference", s, Y(sweeps[s].Expected(last))));
         }
 
         entries.Sort((a, b) => a.Anchor.CompareTo(b.Anchor));
@@ -287,7 +291,7 @@ public static class Co2ChartPainter
             var colour = theme.Series[s % theme.Series.Length];
             rows.Add((sweeps[s].Label, colour, false,
                 sweeps[s].Points[idx].SurfaceTemperature.ToString("F2", Inv) + " K"));
-            rows.Add((sweeps[s].Label + ", expected", colour, true,
+            rows.Add((sweeps[s].Label + " (logarithmic reference)", colour, true,
                 sweeps[s].Expected(idx).ToString("F2", Inv) + " K"));
 
             foreach (var (value, dashed) in new[]
