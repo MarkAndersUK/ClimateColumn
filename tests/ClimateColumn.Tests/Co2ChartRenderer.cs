@@ -316,9 +316,9 @@ internal static class Co2ChartRenderer
                       "accepted value, and that ratio barely moves across the whole range. Its " +
                       "concentration <em>dependence</em> is therefore close to logarithmic, as a real " +
                       "gas is &mdash; what is wrong is a near-uniform scale factor, not the shape. " +
-                      "That is a far more tractable error than the calibrated grey model this " +
-                      "replaced, whose ratio grew from 1.2 to 2.1 across the same span because its " +
-                      "absorber was diluted rather than resolved.</p>", ratioMin, ratioMax));
+                      "A uniform scale error is a far more tractable failure than one that changes " +
+                      "shape with concentration, because a single correction fixes it everywhere " +
+                      "rather than only where it was fitted.</p>", ratioMin, ratioMax));
 
         sb.AppendLine("    <div class=\"callouts\">");
         sb.AppendLine("      <div class=\"callout\">");
@@ -367,7 +367,8 @@ internal static class Co2ChartRenderer
         sb.AppendLine("        <thead><tr><th scope=\"col\">CO₂ (ppm)</th>");
         foreach (var s in sweeps)
         {
-            sb.AppendLine(Fmt("          <th scope=\"col\">dry τ</th><th scope=\"col\">{0}</th><th scope=\"col\">Expected</th>",
+            sb.AppendLine(Fmt("          <th scope=\"col\">dry τ</th><th scope=\"col\">{0}</th>" +
+                              "<th scope=\"col\">Logarithmic reference</th>",
                 Escape(s.Label)));
         }
         sb.AppendLine("        </tr></thead>");
