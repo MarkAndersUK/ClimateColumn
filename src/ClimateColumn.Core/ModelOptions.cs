@@ -311,6 +311,25 @@ public sealed class ModelOptions
     /// </remarks>
     public bool WaterVapourFeedback { get; set; } = true;
 
+    /// <summary>
+    /// Air temperature at which the vapour loading is frozen when
+    /// <see cref="WaterVapourFeedback"/> is off. Null freezes it at
+    /// <see cref="WaterVapourReferenceTemperature"/>.
+    /// </summary>
+    /// <remarks>
+    /// This exists because the obvious choice is wrong. Freezing the loading at its nominal value
+    /// does not reproduce the state the feedback run is actually in: with the feedback on, the
+    /// loading is scaled by Clausius-Clapeyron at the equilibrium air temperature, which sits below
+    /// the reference, so the column carries <em>less</em> vapour than nominal. Freezing at nominal
+    /// therefore adds vapour, and the no-feedback column starts 2.1 K warmer - which is not a
+    /// feedback experiment at all, since the two runs no longer share a base state.
+    ///
+    /// Setting this to the feedback run's own base-state air temperature makes the two identical at
+    /// the reference concentration, so the only difference between them is whether the vapour is
+    /// allowed to respond.
+    /// </remarks>
+    public double? WaterVapourFixedTemperature { get; set; }
+
     public double WaterVapourScaleHeight { get; set; } = 2_000.0;
 
     /// <summary>Temperature at which <see cref="WaterVapourOpticalDepth"/> is specified, K.</summary>

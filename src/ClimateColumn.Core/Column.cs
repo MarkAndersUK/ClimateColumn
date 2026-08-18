@@ -346,11 +346,12 @@ public sealed class Column
         double loading = Options.WaterVapourOpticalDepth;
         if (loading <= 0.0) return 0.0;
 
-        // Held at the reference loading when the feedback is off: same vapour, but it no longer
-        // grows with the surface temperature.
-        if (!Options.WaterVapourFeedback) return loading;
-
-        double airTemperature = ConvectionSolver.NearSurfaceAirTemperature(this);
+        // With the feedback off the loading is frozen - but frozen at a stated temperature, not at
+        // the nominal loading, so that a no-feedback run can be made to start from exactly the
+        // state its feedback counterpart reaches. See WaterVapourFixedTemperature.
+        double airTemperature = Options.WaterVapourFeedback
+            ? ConvectionSolver.NearSurfaceAirTemperature(this)
+            : Options.WaterVapourFixedTemperature ?? Options.WaterVapourReferenceTemperature;
         return loading * Math.Exp(PhysicalConstants.ClausiusClapeyronScale *
             (1.0 / Options.WaterVapourReferenceTemperature - 1.0 / airTemperature));
     }

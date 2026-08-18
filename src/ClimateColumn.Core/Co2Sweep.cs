@@ -64,7 +64,9 @@ public sealed class Co2Sweep
         // so the feedback cannot act on it - and that coincidence is worth showing, because it is
         // the cleanest demonstration that a feedback changes the response and not the forcing.
         // They separate on the temperature panel.
-        var fixedVapour = SpectralBands(waterVapourFeedback: false);
+        var fixedVapour = SpectralBands(
+            waterVapourFeedback: false,
+            fixedVapourTemperature: withFeedback.BaseAirTemperature);
 
         return fixedVapour is null
             ? new[] { withFeedback }
@@ -77,6 +79,12 @@ public sealed class Co2Sweep
 
     /// <summary>Instantaneous forcing at each concentration, against the reference state.</summary>
     public required IReadOnlyList<double> Forcings { get; init; }
+
+    /// <summary>
+    /// Near-surface air temperature of the reference equilibrium, K. Used to freeze a
+    /// no-feedback counterpart at exactly this state so the two share a base.
+    /// </summary>
+    public double BaseAirTemperature { get; init; }
 
     public double ReferencePpm => Concentrations[0];
     public double BaseTemperature => Points[0].SurfaceTemperature;
@@ -149,7 +157,8 @@ public sealed class Co2Sweep
 
         return new Co2Sweep
         {
-            Label = label, Command = command, Points = points, Forcings = forcings
+            Label = label, Command = command, Points = points, Forcings = forcings,
+            BaseAirTemperature = reference.NearSurfaceAirTemperature
         };
     }
 
@@ -268,10 +277,10 @@ public sealed class Co2Sweep
     public static Co2Sweep? SpectralBands(
         int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
         bool rederive = false, double wingCutoff = 400.0, double absorberScale = 14.5781,
-        bool waterVapourFeedback = true)
+        bool waterVapourFeedback = true, double? fixedVapourTemperature = null)
     {
         var configure = SpectralConfiguration(bandCount, gPoints, segmentCount, samples, rederive,
-            wingCutoff, absorberScale, waterVapourFeedback);
+            wingCutoff, absorberScale, waterVapourFeedback, fixedVapourTemperature);
         if (configure is null) return null;
 
         return Run(
@@ -294,7 +303,7 @@ public sealed class Co2Sweep
     public static Func<double, ModelOptions>? SpectralConfiguration(
         int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
         bool rederive = false, double wingCutoff = 400.0, double absorberScale = 14.5781,
-        bool waterVapourFeedback = true)
+        bool waterVapourFeedback = true, double? fixedVapourTemperature = null)
     {
         // Relative amounts per gas, then a common scale chosen for the base state.
         var recipe = new (string File, AbsorberKind Kind, double Share, bool Co2)[]
@@ -374,6 +383,7 @@ public sealed class Co2Sweep
                     Bands = bands,
                     WaterVapourOpticalDepth = 1.0,
                     WaterVapourFeedback = waterVapourFeedback,
+                    WaterVapourFixedTemperature = fixedVapourTemperature,
                     OzoneFraction = 0.3
                 };
             };
