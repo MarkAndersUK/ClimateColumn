@@ -123,6 +123,37 @@ public sealed record Co2ChartQuantity(
     }
 
     /// <summary>
+    /// Whether sweep <paramref name="index"/> plots the same curve as the first one, to within
+    /// <paramref name="tolerance"/>.
+    /// </summary>
+    /// <remarks>
+    /// Drawing one curve exactly over another communicates nothing: the later series hides the
+    /// earlier, the legend advertises a colour that is nowhere on the figure, and the duplicated
+    /// end markers and labels read as two different values that happen to coincide.
+    ///
+    /// It is not hypothetical here. Instantaneous forcing is measured at held temperatures, so the
+    /// water-vapour feedback cannot change it, and the two configurations produce forcing curves
+    /// identical to four decimal places. That identity is the result worth showing - but it is
+    /// shown by saying so, not by painting the same line twice.
+    /// </remarks>
+    public bool DuplicatesFirst(IReadOnlyList<Co2Sweep> sweeps, int index, double tolerance = 1e-6)
+    {
+        if (index <= 0 || index >= sweeps.Count) return false;
+
+        var first = sweeps[0];
+        var other = sweeps[index];
+        if (first.Points.Count != other.Points.Count) return false;
+
+        for (int i = 0; i < first.Points.Count; i++)
+        {
+            double a = Model(first, i);
+            double b = Model(other, i);
+            if (Math.Abs(a - b) > tolerance * Math.Max(1.0, Math.Abs(a))) return false;
+        }
+        return true;
+    }
+
+    /// <summary>
     /// The 1 / 2 / 2.5 / 5 / 10 multiple of a power of ten nearest above
     /// <paramref name="raw"/>, so gridlines land on numbers a reader can do arithmetic with.
     /// </summary>

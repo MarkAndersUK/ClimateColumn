@@ -288,7 +288,8 @@ public sealed class Co2Sweep
                 ? "Derived from HITRAN bands"
                 : "Same bands, water vapour held fixed",
             $"see Co2Sweep.SpectralBands - 6 molecules, {bandCount} derived bands, {gPoints} g-points" +
-            (rederive ? ", re-derived per concentration" : ""),
+            (rederive ? ", re-derived per concentration" : "") +
+            (waterVapourFeedback ? "" : ", water vapour frozen at the base state"),
             configure);
     }
 

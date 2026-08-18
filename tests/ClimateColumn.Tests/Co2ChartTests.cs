@@ -71,6 +71,21 @@ public class Co2ChartTests
 
     private static int Last => Co2Sweep.Concentrations.Length - 1;
 
+    /// <summary>
+    /// How many curves the forcing figure actually draws: one per configuration that is not a
+    /// duplicate of the first, plus the accepted law.
+    /// </summary>
+    /// <remarks>
+    /// Computed rather than written down, because it depends on the data. The no-feedback
+    /// configuration produces a forcing curve identical to the default's - a feedback cannot
+    /// change an instantaneous forcing measured at held temperatures - so it is suppressed rather
+    /// than painted invisibly over the top. On the temperature figure the same two would both be
+    /// drawn, since there they differ.
+    /// </remarks>
+    private static int DrawnCurves =>
+        Enumerable.Range(0, Plotted.Length)
+            .Count(i => !Co2ChartQuantity.Forcing.DuplicatesFirst(Plotted, i)) + 1;
+
     [TestMethod]
     public void EveryPointInBothSweepsReachesEquilibrium()
     {
@@ -209,7 +224,7 @@ public class Co2ChartTests
 
         Assert.IsTrue(html.Contains("<svg id=\"chart\"", StringComparison.Ordinal),
             "the rendered page should contain the chart");
-        Assert.AreEqual(Plotted.Length + 1, CountOccurrences(html, "<path class=\"series-line\""),
+        Assert.AreEqual(DrawnCurves, CountOccurrences(html, "<path class=\"series-line\""),
             "a model curve and an expectation curve per plotted configuration");
         Assert.IsFalse(html.Contains("NaN", StringComparison.Ordinal),
             "a NaN in the output means a coordinate or a ratio failed to compute");
@@ -251,7 +266,8 @@ public class Co2ChartTests
             at += 1;
         }
 
-        Assert.AreEqual(Plotted.Length + 1, ys.Count, "one label per model line end, plus one for the accepted law");
+        Assert.AreEqual(DrawnCurves, ys.Count,
+            "one label per drawn model line end, plus one for the accepted law");
 
         ys.Sort();
         for (int i = 1; i < ys.Count; i++)
@@ -295,7 +311,7 @@ public class Co2ChartTests
             "every swept concentration should be in the hover data");
 
         var series = root.GetProperty("series");
-        Assert.AreEqual(Plotted.Length + 1, series.GetArrayLength(),
+        Assert.AreEqual(DrawnCurves, series.GetArrayLength(),
             "one model series per configuration, plus a single accepted-law series");
 
         foreach (var entry in series.EnumerateArray())

@@ -120,10 +120,16 @@ internal static class Co2ChartRenderer
             var sweep = sweeps[s];
             string color = Fmt("var(--series-{0})", Slot(s));
 
-            svg.AppendLine(Fmt(
-                "  <path class=\"series-line\" d=\"{0}\" fill=\"none\" stroke=\"{1}\" stroke-width=\"2\" " +
-                "stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
-                Path(sweep, i => quantity.Model(sweep, i), X, Y), color));
+            // A series identical to the first is not drawn: it would paint exactly over it,
+            // hiding the earlier curve and advertising a legend colour that is nowhere on the
+            // figure. The legend says so instead.
+            if (!quantity.DuplicatesFirst(sweeps, s))
+            {
+                svg.AppendLine(Fmt(
+                    "  <path class=\"series-line\" d=\"{0}\" fill=\"none\" stroke=\"{1}\" stroke-width=\"2\" " +
+                    "stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
+                    Path(sweep, i => quantity.Model(sweep, i), X, Y), color));
+            }
 
             // The reference law does not depend on the sweep, so it is drawn once rather than once
             // per series. Drawing it per series stacked identical dashed curves, claimed in the
@@ -141,6 +147,8 @@ internal static class Co2ChartRenderer
         // End markers on the model curves, ringed in the surface colour so they stay legible.
         for (int s = 0; s < sweeps.Length; s++)
         {
+            if (quantity.DuplicatesFirst(sweeps, s)) continue;
+
             int last = sweeps[s].Points.Count - 1;
             svg.AppendLine(Fmt(
                 "  <circle cx=\"{0:F1}\" cy=\"{1:F1}\" r=\"4.5\" fill=\"var(--series-{2})\" stroke=\"var(--surface)\" stroke-width=\"2\"/>",
@@ -182,6 +190,7 @@ internal static class Co2ChartRenderer
         {
             var kinds = s == 0 && quantity.HasReference
                 ? new[] { "model", "accepted" }
+                : quantity.DuplicatesFirst(sweeps, s) ? Array.Empty<string>()
                 : new[] { "model" };
             foreach (string kind in kinds)
             {
@@ -217,7 +226,10 @@ internal static class Co2ChartRenderer
             var sweep = sweeps[s];
             int last = sweep.Points.Count - 1;
 
-            yield return (quantity.Model(sweep, last), "model", Slot(s));
+            if (!quantity.DuplicatesFirst(sweeps, s))
+            {
+                yield return (quantity.Model(sweep, last), "model", Slot(s));
+            }
 
             if (s == 0 && quantity.Reference is { } reference)
             {
@@ -322,11 +334,13 @@ internal static class Co2ChartRenderer
         {
             // The dashed curve is the accepted law, not something taken from the line data, so it
             // must not be labelled as though the model produced it.
+            bool duplicate = quantity.DuplicatesFirst(sweeps, s);
             sb.AppendLine(Fmt(
                 "      <span class=\"legend-item\"><svg class=\"legend-key\" width=\"22\" height=\"10\" aria-hidden=\"true\">" +
                 "<line x1=\"1\" y1=\"5\" x2=\"21\" y2=\"5\" stroke=\"var(--series-{0})\" stroke-width=\"2\" " +
-                "stroke-linecap=\"round\"/></svg><span>{1}</span></span>",
-                Slot(s), Escape(sweeps[s].Label)));
+                "stroke-linecap=\"round\"{1}/></svg><span>{2}{3}</span></span>",
+                Slot(s), duplicate ? " opacity=\"0.35\"" : "", Escape(sweeps[s].Label),
+                duplicate ? " &mdash; identical here, not drawn" : ""));
         }
         if (quantity.HasReference)
         {
@@ -532,6 +546,8 @@ internal static class Co2ChartRenderer
         {
             var sweep = sweeps[s];
             int n = sweep.Points.Count;
+
+            if (quantity.DuplicatesFirst(sweeps, s)) continue;
 
             series.Add(Fmt(
                 "{{\"id\":\"{0}-model\",\"label\":\"{1}\",\"slot\":{0},\"dash\":false,\"values\":[{2}]}}",

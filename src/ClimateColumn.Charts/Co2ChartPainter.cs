@@ -174,7 +174,8 @@ public static class Co2ChartPainter
                 // must not read as though it were.
                 string text = dashed
                     ? $"{quantity.ReferenceLabel} (accepted law)"
-                    : $"{sweeps[s].Label}";
+                    : sweeps[s].Label +
+                      (quantity.DuplicatesFirst(sweeps, s) ? " — identical here, not drawn" : "");
                 var size = g.MeasureString(text, font);
 
                 // Wrap to a second row rather than run off the figure.
@@ -207,7 +208,12 @@ public static class Co2ChartPainter
             var sweep = sweeps[s];
             var colour = theme.Series[s % theme.Series.Length];
 
-            DrawLine(g, sweep, i => quantity.Model(sweep, i), X, Y, colour, dashed: false);
+            // Identical to the first series: drawing it would paint exactly over that curve.
+            bool duplicate = quantity.DuplicatesFirst(sweeps, s);
+            if (!duplicate)
+            {
+                DrawLine(g, sweep, i => quantity.Model(sweep, i), X, Y, colour, dashed: false);
+            }
 
             // The reference law does not depend on the sweep, so it is drawn once rather than
             // once per series - otherwise identical dashed curves stack on each other and the
@@ -216,6 +222,8 @@ public static class Co2ChartPainter
             {
                 DrawLine(g, sweep, i => reference(sweep, i), X, Y, theme.Axis, dashed: true);
             }
+
+            if (duplicate) continue;
 
             // End marker on the model curve, ringed in the surface colour.
             int last = sweeps[s].Points.Count - 1;
@@ -263,8 +271,11 @@ public static class Co2ChartPainter
             var sweep = sweeps[s];
             int last = sweep.Points.Count - 1;
 
-            double model = quantity.Model(sweep, last);
-            entries.Add((model, "model", s, Y(model)));
+            if (!quantity.DuplicatesFirst(sweeps, s))
+            {
+                double model = quantity.Model(sweep, last);
+                entries.Add((model, "model", s, Y(model)));
+            }
 
             if (s == 0 && quantity.Reference is { } reference)
             {
@@ -331,6 +342,10 @@ public static class Co2ChartPainter
         var rows = new List<(string Text, Color Colour, bool Dashed, string Value)>();
         for (int s = 0; s < sweeps.Count; s++)
         {
+            // A duplicate series is not drawn, so it must not appear in the readout either -
+            // two rows with the same number and different colours read as a discrepancy.
+            if (quantity.DuplicatesFirst(sweeps, s)) continue;
+
             var sweep = sweeps[s];
             var colour = theme.Series[s % theme.Series.Length];
 
@@ -369,6 +384,8 @@ public static class Co2ChartPainter
 
             for (int s = 0; s < sweeps.Count; s++)
             {
+                if (quantity.DuplicatesFirst(sweeps, s)) continue;
+
                 foreach (var (value, _, _) in HoverEntries(sweeps[s], j, quantity))
                 {
                     highest = Math.Min(highest, Y(value));

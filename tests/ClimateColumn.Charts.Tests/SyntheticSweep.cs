@@ -15,7 +15,7 @@ namespace ClimateColumn.Charts.Tests;
 internal static class SyntheticSweep
 {
     public static Co2Sweep Build(string label = "Synthetic", double baseTemperature = 287.0,
-        double slope = 0.004)
+        double slope = 0.004, double forcingSlope = 0.006)
     {
         var points = new List<Co2Point>();
         var forcings = new List<double>();
@@ -29,8 +29,12 @@ internal static class SyntheticSweep
                 SurfaceTemperature: baseTemperature + above * slope,
                 Converged: true));
 
-            // Non-zero at the calibration point so Sensitivity is finite.
-            forcings.Add(0.5 + above * 0.006);
+            // Non-zero at the calibration point so Sensitivity is finite, and varying with
+            // forcingSlope so that two synthetic configurations differ in forcing as well as in
+            // temperature. They previously did not: Build ignored its arguments here, so Pair()
+            // produced two identical forcing curves, which the chart now correctly refuses to
+            // draw twice - and that turned this fixture into a degenerate case.
+            forcings.Add(0.5 + above * forcingSlope);
         }
 
         return new Co2Sweep
@@ -45,7 +49,7 @@ internal static class SyntheticSweep
     /// <summary>The two-configuration pair the chart is normally drawn from.</summary>
     public static Co2Sweep[] Pair() => new[]
     {
-        Build("No vapour feedback", 286.8, 0.0032),
-        Build("With water vapour feedback", 287.0, 0.0046)
+        Build("No vapour feedback", 286.8, 0.0032, 0.0055),
+        Build("With water vapour feedback", 287.0, 0.0046, 0.0065)
     };
 }
