@@ -296,6 +296,21 @@ public sealed class ModelOptions
     public double WaterVapourOpticalDepth { get; set; } = 0.0;
 
     /// <summary>Scale height of the water-vapour absorber, m (~2 km on Earth).</summary>
+    /// <summary>
+    /// Let the water-vapour absorber respond to temperature through Clausius-Clapeyron.
+    /// </summary>
+    /// <remarks>
+    /// Turning this off does <em>not</em> remove the vapour - that would be a different and much
+    /// larger change, since the vapour carries most of the greenhouse effect. It holds the loading
+    /// at its reference value instead, so the column has the same absorber but that absorber no
+    /// longer grows as the surface warms. That is what "no water-vapour feedback" means.
+    ///
+    /// It changes the temperature <em>response</em> and not the forcing. Instantaneous forcing is
+    /// measured at held temperatures, and the vapour is re-evaluated at those held temperatures
+    /// either way, so both settings give the same forcing curve to the last digit.
+    /// </remarks>
+    public bool WaterVapourFeedback { get; set; } = true;
+
     public double WaterVapourScaleHeight { get; set; } = 2_000.0;
 
     /// <summary>Temperature at which <see cref="WaterVapourOpticalDepth"/> is specified, K.</summary>

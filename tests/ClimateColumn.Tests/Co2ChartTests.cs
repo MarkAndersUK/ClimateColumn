@@ -22,7 +22,7 @@ public class Co2ChartTests
     private static Co2Sweep _noFeedback = null!;
     private static Co2Sweep _withFeedback = null!;
 
-    private static Co2Sweep? _spectral;
+    private static Co2Sweep[] _plotted = Array.Empty<Co2Sweep>();
 
     [ClassInitialize]
     public static void RunSweeps(TestContext _)
@@ -30,16 +30,17 @@ public class Co2ChartTests
         _noFeedback = Co2Sweep.NoFeedback();
         _withFeedback = Co2Sweep.WithWaterVapourFeedback();
 
-        // Null when the HITRAN line lists have not been fetched, in which case the chart simply
-        // shows the two grey configurations.
-        _spectral = Co2Sweep.SpectralBands();
+        // Empty when the HITRAN line lists have not been fetched. One source of truth for what
+        // the chart shows, shared with the app and the PNG export.
+        _plotted = Co2Sweep.ForChart();
     }
 
     /// <summary>The grey configurations, which the assertions below are about.</summary>
     private static IEnumerable<Co2Sweep> Sweeps => new[] { _noFeedback, _withFeedback };
 
     /// <summary>
-    /// What goes on the chart: the spectrally derived configuration alone.
+    /// What goes on the chart: the spectral configuration, and the same configuration with the
+    /// water vapour held at its reference loading.
     /// </summary>
     /// <remarks>
     /// The grey configurations are still swept, because the findings about them below are real and
@@ -50,18 +51,21 @@ public class Co2ChartTests
     ///
     /// With no HITRAN data there is nothing to plot, so the rendering tests skip rather than fall
     /// back to a grey curve - a chart captioned as spectral must not quietly show something else.
+    ///
+    /// The fixed-vapour series is the same model with the feedback switched off, not a different
+    /// model, which is why it belongs here where the calibrated grey curves did not.
     /// </remarks>
     private static Co2Sweep[] Plotted
     {
         get
         {
-            if (_spectral is null)
+            if (_plotted.Length == 0)
             {
                 Assert.Inconclusive(
                     "No HITRAN data, so there is no spectral sweep to chart. Run " +
                     "scripts/fetch-hitran.ps1 -Molecule all.");
             }
-            return new[] { _spectral! };
+            return _plotted;
         }
     }
 
@@ -205,7 +209,7 @@ public class Co2ChartTests
 
         Assert.IsTrue(html.Contains("<svg id=\"chart\"", StringComparison.Ordinal),
             "the rendered page should contain the chart");
-        Assert.AreEqual(2 * Plotted.Length, CountOccurrences(html, "<path class=\"series-line\""),
+        Assert.AreEqual(Plotted.Length + 1, CountOccurrences(html, "<path class=\"series-line\""),
             "a model curve and an expectation curve per plotted configuration");
         Assert.IsFalse(html.Contains("NaN", StringComparison.Ordinal),
             "a NaN in the output means a coordinate or a ratio failed to compute");
@@ -247,7 +251,7 @@ public class Co2ChartTests
             at += 1;
         }
 
-        Assert.AreEqual(2 * Plotted.Length, ys.Count, "one label per line end");
+        Assert.AreEqual(Plotted.Length + 1, ys.Count, "one label per model line end, plus one for the accepted law");
 
         ys.Sort();
         for (int i = 1; i < ys.Count; i++)
@@ -291,8 +295,8 @@ public class Co2ChartTests
             "every swept concentration should be in the hover data");
 
         var series = root.GetProperty("series");
-        Assert.AreEqual(2 * Plotted.Length, series.GetArrayLength(),
-            "a model series and an accepted-law series per plotted configuration");
+        Assert.AreEqual(Plotted.Length + 1, series.GetArrayLength(),
+            "one model series per configuration, plus a single accepted-law series");
 
         foreach (var entry in series.EnumerateArray())
         {

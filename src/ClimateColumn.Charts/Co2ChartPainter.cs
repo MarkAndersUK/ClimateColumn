@@ -107,14 +107,33 @@ public static class Co2ChartPainter
         g.DrawLine(axisPen, plot.Left, plot.Bottom, plot.Right, plot.Bottom);
 
         using var centre = new StringFormat { Alignment = StringAlignment.Center };
+        using var gridPen = new Pen(theme.Grid, 1f);
 
-        // Label every swept concentration where there is room, else every other one.
+        // Label every swept concentration where there is room, else every other one. Each labelled
+        // tick also gets a vertical gridline: with ten points across the plot, reading a value at a
+        // given concentration otherwise means tracking the eye across empty space.
         int stride = plot.Width / Math.Max(1, ppm.Length) < 46 ? 2 : 1;
         for (int i = 0; i < ppm.Length; i += stride)
         {
+            float x = X(ppm[i]);
+            g.DrawLine(gridPen, x, plot.Top, x, plot.Bottom);
+
+            // The highlighted value is labelled separately at the top of the plot; labelling it
+            // here too would collide with its neighbour 20 ppm away.
+            if (Math.Abs(ppm[i] - Co2Sweep.HighlightPpm) < 1e-9) continue;
+
             g.DrawString(ppm[i].ToString("F0", Inv), tickFont, mutedBrush,
-                new RectangleF(X(ppm[i]) - 30, plot.Bottom + 7, 60, 16), centre);
+                new RectangleF(x - 30, plot.Bottom + 7, 60, 16), centre);
         }
+
+        // The highlighted concentration gets a rule of its own, so it can be found on the curve.
+        float hx = X(Co2Sweep.HighlightPpm);
+        using (var highlight = new Pen(theme.Axis, 1f) { DashPattern = new[] { 3f, 3f } })
+        {
+            g.DrawLine(highlight, hx, plot.Top, hx, plot.Bottom);
+        }
+        g.DrawString(Co2Sweep.HighlightPpm.ToString("F0", Inv), tickFont, mutedBrush,
+            new RectangleF(hx - 30, plot.Top + 2, 60, 16), centre);
     }
 
     private static void DrawAxisTitles(Graphics g, Rectangle bounds, Rectangle plot,
@@ -143,17 +162,19 @@ public static class Co2ChartPainter
         float x = bounds.Left + MarginLeft;
         float y = bounds.Top + MarginTop - 6;
 
-        var patterns = quantity.HasReference ? new[] { false, true } : new[] { false };
-
-        for (int s = 0; s < sweeps.Count; s++)
+        for (int s = 0; s <= sweeps.Count; s++)
         {
-            foreach (bool dashed in patterns)
+            // One key per configuration, then a single key for the reference law.
+            bool isReference = s == sweeps.Count;
+            if (isReference && !quantity.HasReference) break;
+
+            foreach (bool dashed in new[] { isReference })
             {
                 // The dashed curve is the accepted law, not something the model produced, so it
                 // must not read as though it were.
                 string text = dashed
                     ? $"{quantity.ReferenceLabel} (accepted law)"
-                    : $"{sweeps[s].Label} (model)";
+                    : $"{sweeps[s].Label}";
                 var size = g.MeasureString(text, font);
 
                 // Wrap to a second row rather than run off the figure.
@@ -163,7 +184,7 @@ public static class Co2ChartPainter
                     y += 16;
                 }
 
-                using var pen = new Pen(theme.Series[s % theme.Series.Length], 2f)
+                using var pen = new Pen(dashed ? theme.Axis : theme.Series[s % theme.Series.Length], 2f)
                 {
                     StartCap = LineCap.Round,
                     EndCap = LineCap.Round
@@ -187,9 +208,13 @@ public static class Co2ChartPainter
             var colour = theme.Series[s % theme.Series.Length];
 
             DrawLine(g, sweep, i => quantity.Model(sweep, i), X, Y, colour, dashed: false);
-            if (quantity.Reference is { } reference)
+
+            // The reference law does not depend on the sweep, so it is drawn once rather than
+            // once per series - otherwise identical dashed curves stack on each other and the
+            // legend claims each configuration has its own accepted law.
+            if (s == 0 && quantity.Reference is { } reference)
             {
-                DrawLine(g, sweep, i => reference(sweep, i), X, Y, colour, dashed: true);
+                DrawLine(g, sweep, i => reference(sweep, i), X, Y, theme.Axis, dashed: true);
             }
 
             // End marker on the model curve, ringed in the surface colour.
@@ -241,7 +266,7 @@ public static class Co2ChartPainter
             double model = quantity.Model(sweep, last);
             entries.Add((model, "model", s, Y(model)));
 
-            if (quantity.Reference is { } reference)
+            if (s == 0 && quantity.Reference is { } reference)
             {
                 double value = reference(sweep, last);
                 entries.Add((value, "accepted law", s, Y(value)));

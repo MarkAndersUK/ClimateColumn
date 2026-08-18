@@ -31,6 +31,10 @@ internal static class Co2ChartRenderer
 
     private static readonly double[] XTicks = { 285, 400, 500, 600, 700, 800, 900, 1000 };
 
+    // Vertical gridlines matter more here than they usually would: with ten swept points and a
+    // 700 px plot, reading a value at a given concentration otherwise means tracking the eye
+    // across empty space from an axis label to a curve.
+
     /// <summary>
     /// Renders the sweeps as one interactive figure of <paramref name="quantity"/>.
     /// </summary>
@@ -86,9 +90,22 @@ internal static class Co2ChartRenderer
         foreach (double c in XTicks)
         {
             svg.AppendLine(Fmt(
+                "  <line x1=\"{0:F1}\" x2=\"{0:F1}\" y1=\"{1}\" y2=\"{2}\" stroke=\"var(--grid)\" stroke-width=\"1\"/>",
+                X(c), MarginTop, MarginTop + PlotHeight));
+            svg.AppendLine(Fmt(
                 "  <text x=\"{0:F1}\" y=\"{1}\" text-anchor=\"middle\" class=\"tick\">{2:F0}</text>",
                 X(c), MarginTop + PlotHeight + 22, c));
         }
+
+        // The highlighted concentration gets a rule of its own so the callout below can be found
+        // on the curve rather than only read as a number.
+        svg.AppendLine(Fmt(
+            "  <line x1=\"{0:F1}\" x2=\"{0:F1}\" y1=\"{1}\" y2=\"{2}\" stroke=\"var(--axis)\" " +
+            "stroke-width=\"1\" stroke-dasharray=\"3 3\"/>",
+            X(Co2Sweep.HighlightPpm), MarginTop, MarginTop + PlotHeight));
+        svg.AppendLine(Fmt(
+            "  <text x=\"{0:F1}\" y=\"{1}\" text-anchor=\"middle\" class=\"tick\">{2:F0}</text>",
+            X(Co2Sweep.HighlightPpm), MarginTop - 6, Co2Sweep.HighlightPpm));
 
         svg.AppendLine(Fmt(
             "  <text x=\"{0:F1}\" y=\"{1}\" text-anchor=\"middle\" class=\"axis-title\">CO₂ concentration (ppm)</text>",
@@ -108,12 +125,16 @@ internal static class Co2ChartRenderer
                 "stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
                 Path(sweep, i => quantity.Model(sweep, i), X, Y), color));
 
-            if (quantity.Reference is { } reference)
+            // The reference law does not depend on the sweep, so it is drawn once rather than once
+            // per series. Drawing it per series stacked identical dashed curves, claimed in the
+            // legend that each configuration had its own accepted law, and duplicated its end
+            // label. Neutral grey keeps the categorical hues meaning one configuration each.
+            if (s == 0 && quantity.Reference is { } reference)
             {
                 svg.AppendLine(Fmt(
-                    "  <path class=\"series-line\" d=\"{0}\" fill=\"none\" stroke=\"{1}\" stroke-width=\"2\" " +
-                    "stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-dasharray=\"7 5\" opacity=\"0.85\"/>",
-                    Path(sweep, i => reference(sweep, i), X, Y), color));
+                    "  <path class=\"series-line\" d=\"{0}\" fill=\"none\" stroke=\"var(--axis)\" stroke-width=\"2\" " +
+                    "stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-dasharray=\"7 5\"/>",
+                    Path(sweep, i => reference(sweep, i), X, Y)));
             }
         }
 
@@ -157,9 +178,11 @@ internal static class Co2ChartRenderer
             "  <line id=\"crosshair\" y1=\"{0}\" y2=\"{1}\" stroke=\"var(--axis)\" stroke-width=\"1\" opacity=\"0\"/>",
             MarginTop, MarginTop + PlotHeight));
 
-        var kinds = quantity.HasReference ? new[] { "model", "accepted" } : new[] { "model" };
         for (int s = 0; s < sweeps.Length; s++)
         {
+            var kinds = s == 0 && quantity.HasReference
+                ? new[] { "model", "accepted" }
+                : new[] { "model" };
             foreach (string kind in kinds)
             {
                 svg.AppendLine(Fmt(
@@ -196,7 +219,7 @@ internal static class Co2ChartRenderer
 
             yield return (quantity.Model(sweep, last), "model", Slot(s));
 
-            if (quantity.Reference is { } reference)
+            if (s == 0 && quantity.Reference is { } reference)
             {
                 yield return (reference(sweep, last), "accepted law", Slot(s));
             }
@@ -299,24 +322,19 @@ internal static class Co2ChartRenderer
         {
             // The dashed curve is the accepted law, not something taken from the line data, so it
             // must not be labelled as though the model produced it.
-            var keys = new List<(string Dash, string Text)>
-            {
-                ("", Escape(sweeps[s].Label) + " (model)")
-            };
-            if (quantity.HasReference)
-            {
-                keys.Add((" stroke-dasharray=\"6 4\"",
-                    Escape(quantity.ReferenceLabel!) + " (accepted law)"));
-            }
-
-            foreach (var (dash, text) in keys)
-            {
-                sb.AppendLine(Fmt(
-                    "      <span class=\"legend-item\"><svg class=\"legend-key\" width=\"22\" height=\"10\" aria-hidden=\"true\">" +
-                    "<line x1=\"1\" y1=\"5\" x2=\"21\" y2=\"5\" stroke=\"var(--series-{0})\" stroke-width=\"2\" " +
-                    "stroke-linecap=\"round\"{1}/></svg><span>{2}</span></span>",
-                    Slot(s), dash, text));
-            }
+            sb.AppendLine(Fmt(
+                "      <span class=\"legend-item\"><svg class=\"legend-key\" width=\"22\" height=\"10\" aria-hidden=\"true\">" +
+                "<line x1=\"1\" y1=\"5\" x2=\"21\" y2=\"5\" stroke=\"var(--series-{0})\" stroke-width=\"2\" " +
+                "stroke-linecap=\"round\"/></svg><span>{1}</span></span>",
+                Slot(s), Escape(sweeps[s].Label)));
+        }
+        if (quantity.HasReference)
+        {
+            sb.AppendLine(Fmt(
+                "      <span class=\"legend-item\"><svg class=\"legend-key\" width=\"22\" height=\"10\" aria-hidden=\"true\">" +
+                "<line x1=\"1\" y1=\"5\" x2=\"21\" y2=\"5\" stroke=\"var(--axis)\" stroke-width=\"2\" " +
+                "stroke-linecap=\"round\" stroke-dasharray=\"6 4\"/></svg><span>{0} (accepted law)</span></span>",
+                Escape(quantity.ReferenceLabel!)));
         }
         sb.AppendLine("    </div>");
 
@@ -355,6 +373,20 @@ internal static class Co2ChartRenderer
                       "rather than only where it was fitted.</p>", ratioMin, ratioMax));
 
         sb.AppendLine("    <div class=\"callouts\">");
+        // The highlighted concentration leads, because it is the one a reader is most likely to
+        // want: just past twice the reference, so it is near the doubling the accepted law is
+        // usually quoted for. Forcing and response are shown together - they are different
+        // quantities and the figure otherwise only plots the first.
+        int hi = Co2Sweep.HighlightIndex;
+        sb.AppendLine("      <div class=\"callout\">");
+        sb.AppendLine(Fmt("        <span class=\"callout-label\">At {0:F0} ppm</span>",
+            Co2Sweep.HighlightPpm));
+        sb.AppendLine(Fmt("        <span class=\"callout-value\">{0:F2} W/m&sup2;</span>",
+            only.Forcings[hi]));
+        sb.AppendLine(Fmt("        <span class=\"callout-note\">and +{0:F2} K, against {1:F2} W/m&sup2; " +
+                          "from the accepted law</span>",
+            only.Warming(hi), only.AcceptedForcing(hi)));
+        sb.AppendLine("      </div>");
         sb.AppendLine("      <div class=\"callout\">");
         sb.AppendLine(Fmt("        <span class=\"callout-label\">Forcing at {0:F0} ppm</span>",
             Co2Sweep.Concentrations[last]));
@@ -507,7 +539,7 @@ internal static class Co2ChartRenderer
                 string.Join(",", Enumerable.Range(0, n)
                     .Select(i => quantity.Model(sweep, i).ToString("F4", Inv)))));
 
-            if (quantity.Reference is { } reference)
+            if (s == 0 && quantity.Reference is { } reference)
             {
                 series.Add(Fmt(
                     "{{\"id\":\"{0}-accepted\",\"label\":\"{1}\",\"slot\":{0},\"dash\":true,\"values\":[{2}]}}",

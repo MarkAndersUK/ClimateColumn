@@ -149,7 +149,8 @@ public sealed class ColumnModel
         // The water-vapour absorber follows the evolving temperature (Clausius-Clapeyron),
         // so its distribution must be refreshed before every radiation solve. The fixed dry
         // absorber needs no refresh.
-        bool temperatureDependentAbsorber = Options.WaterVapourOpticalDepth > 0.0;
+        bool temperatureDependentAbsorber =
+            Options.WaterVapourOpticalDepth > 0.0 && Options.WaterVapourFeedback;
 
         RadiationResult rad = RadiationSolver.Solve(Column);
 

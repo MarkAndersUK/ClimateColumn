@@ -17,7 +17,16 @@ public sealed class Co2Sweep
 {
     /// <summary>Concentrations swept, ppm. The reference is first.</summary>
     public static readonly double[] Concentrations =
-        { 285, 350, 425, 500, 600, 700, 800, 900, 1000 };
+        { 285, 350, 425, 500, 580, 600, 700, 800, 900, 1000 };
+
+    /// <summary>
+    /// A concentration worth calling out on the figure, ppm. Just above twice the 285 ppm
+    /// reference, so it is close to the doubling the accepted forcing law is usually quoted for.
+    /// </summary>
+    public const double HighlightPpm = 580.0;
+
+    /// <summary>Index of <see cref="HighlightPpm"/>, looked up rather than hard-coded.</summary>
+    public static readonly int HighlightIndex = Array.IndexOf(Concentrations, HighlightPpm);
 
     /// <summary>The concentration both configurations are calibrated at, ppm.</summary>
     public const double CalibrationPpm = 425.0;
@@ -47,8 +56,19 @@ public sealed class Co2Sweep
     /// </remarks>
     public static Co2Sweep[] ForChart()
     {
-        var spectral = SpectralBands();
-        return spectral is null ? Array.Empty<Co2Sweep>() : new[] { spectral };
+        var withFeedback = SpectralBands();
+        if (withFeedback is null) return Array.Empty<Co2Sweep>();
+
+        // The same configuration with the vapour held at its reference loading. On the forcing
+        // panel the two curves coincide - instantaneous forcing is measured at held temperatures,
+        // so the feedback cannot act on it - and that coincidence is worth showing, because it is
+        // the cleanest demonstration that a feedback changes the response and not the forcing.
+        // They separate on the temperature panel.
+        var fixedVapour = SpectralBands(waterVapourFeedback: false);
+
+        return fixedVapour is null
+            ? new[] { withFeedback }
+            : new[] { withFeedback, fixedVapour };
     }
 
     public required string Label { get; init; }
@@ -247,13 +267,17 @@ public sealed class Co2Sweep
     /// </remarks>
     public static Co2Sweep? SpectralBands(
         int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
-        bool rederive = false, double wingCutoff = 400.0, double absorberScale = 14.5781)
+        bool rederive = false, double wingCutoff = 400.0, double absorberScale = 14.5781,
+        bool waterVapourFeedback = true)
     {
-        var configure = SpectralConfiguration(bandCount, gPoints, segmentCount, samples, rederive, wingCutoff, absorberScale);
+        var configure = SpectralConfiguration(bandCount, gPoints, segmentCount, samples, rederive,
+            wingCutoff, absorberScale, waterVapourFeedback);
         if (configure is null) return null;
 
         return Run(
-            "Derived from HITRAN bands",
+            waterVapourFeedback
+                ? "Derived from HITRAN bands"
+                : "Same bands, water vapour held fixed",
             $"see Co2Sweep.SpectralBands - 6 molecules, {bandCount} derived bands, {gPoints} g-points" +
             (rederive ? ", re-derived per concentration" : ""),
             configure);
@@ -269,7 +293,8 @@ public sealed class Co2Sweep
     /// </remarks>
     public static Func<double, ModelOptions>? SpectralConfiguration(
         int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
-        bool rederive = false, double wingCutoff = 400.0, double absorberScale = 14.5781)
+        bool rederive = false, double wingCutoff = 400.0, double absorberScale = 14.5781,
+        bool waterVapourFeedback = true)
     {
         // Relative amounts per gas, then a common scale chosen for the base state.
         var recipe = new (string File, AbsorberKind Kind, double Share, bool Co2)[]
@@ -348,6 +373,7 @@ public sealed class Co2Sweep
                     SegmentCount = segmentCount,
                     Bands = bands,
                     WaterVapourOpticalDepth = 1.0,
+                    WaterVapourFeedback = waterVapourFeedback,
                     OzoneFraction = 0.3
                 };
             };
