@@ -261,8 +261,24 @@ public sealed class MainForm : Form
             ? "Running the column to equilibrium at each concentration, under cloud…"
             : "Running the column to equilibrium at each concentration…";
 
-        var sweeps = await Task.Run(() => Co2Sweep.ForChart(clouds));
-        _cloudButton.Enabled = true;
+        // A minute of nothing moving is indistinguishable from a hang. UseWaitCursor rather
+        // than Cursor.Current because it propagates to every child control - the chart, the
+        // profile and the grid each carry their own cursor otherwise, so setting only the
+        // form's would leave the pointer normal over exactly the area being looked at.
+        UseWaitCursor = true;
+
+        Co2Sweep[] sweeps;
+        try
+        {
+            sweeps = await Task.Run(() => Co2Sweep.ForChart(clouds));
+        }
+        finally
+        {
+            // In a finally so a failed sweep cannot strand the window with a busy pointer and
+            // a dead toggle.
+            UseWaitCursor = false;
+            _cloudButton.Enabled = true;
+        }
 
         _sweeps = sweeps;
         _chart.SetSweeps(sweeps);

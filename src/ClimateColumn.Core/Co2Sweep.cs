@@ -124,6 +124,17 @@ public sealed class Co2Sweep
     /// </summary>
     public double BaseAirTemperature { get; init; }
 
+    /// <summary>
+    /// Fraction of the sky the run carried cloud over, 0 for a clear-sky configuration.
+    /// </summary>
+    /// <remarks>
+    /// Read off the options the sweep actually ran with rather than passed in beside them, so a
+    /// figure captioned "67 % cloud" cannot end up describing a column that had none. The label
+    /// already carries the same fact in words, but a caption should not be produced by parsing
+    /// prose.
+    /// </remarks>
+    public double CloudFraction { get; init; }
+
     public double ReferencePpm => Concentrations[0];
     public double BaseTemperature => Points[0].SurfaceTemperature;
 
@@ -221,7 +232,8 @@ public sealed class Co2Sweep
         return new Co2Sweep
         {
             Label = label, Command = command, Points = points, Forcings = forcings,
-            Profiles = profiles, BaseAirTemperature = reference.NearSurfaceAirTemperature
+            Profiles = profiles, BaseAirTemperature = reference.NearSurfaceAirTemperature,
+            CloudFraction = reference.Column.Options.CloudFraction
         };
     }
 

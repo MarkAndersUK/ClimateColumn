@@ -67,7 +67,10 @@ public static class Co2ChartPainter
         DrawGrid(g, plot, yMin, yMax, yStep, Y, quantity, theme, tickFont, mutedBrush);
         DrawXAxis(g, plot, ppm, X, theme, tickFont, mutedBrush);
         DrawAxisTitles(g, bounds, plot, quantity, titleFont, secondaryBrush);
-        DrawLegend(g, bounds, sweeps, quantity, theme, labelFont, secondaryBrush);
+        // The caption is measured before the legend is laid out, so the legend can wrap clear of
+        // it rather than running underneath. Both live on the same row.
+        float captionLeft = DrawSkyCaption(g, bounds, sweeps, labelFont, mutedBrush);
+        DrawLegend(g, bounds, sweeps, quantity, theme, labelFont, secondaryBrush, captionLeft);
         DrawSeries(g, sweeps, X, Y, quantity, theme);
         DrawHighlightValues(g, plot, sweeps, X, Y, quantity, theme, boldFont, mutedBrush);
         DrawEndLabels(g, plot, sweeps, Y, quantity, theme, boldFont, tickFont, inkBrush, mutedBrush);
@@ -158,7 +161,7 @@ public static class Co2ChartPainter
     /// alone. Each key repeats the line's own dash pattern.
     /// </summary>
     private static void DrawLegend(Graphics g, Rectangle bounds, IReadOnlyList<Co2Sweep> sweeps,
-        Co2ChartQuantity quantity, ChartTheme theme, Font font, Brush brush)
+        Co2ChartQuantity quantity, ChartTheme theme, Font font, Brush brush, float rightLimit)
     {
         float x = bounds.Left + MarginLeft;
         float y = bounds.Top + MarginTop - 6;
@@ -180,7 +183,9 @@ public static class Co2ChartPainter
                 var size = g.MeasureString(text, font);
 
                 // Wrap to a second row rather than run off the figure.
-                if (x + 26 + size.Width > bounds.Right - 12)
+                // Stops at the sky caption rather than the figure edge, so the two never
+                // share a line.
+                if (x + 26 + size.Width > rightLimit - 16)
                 {
                     x = bounds.Left + MarginLeft;
                     y += 16;
@@ -199,6 +204,38 @@ public static class Co2ChartPainter
                 x += 26 + size.Width + 20;
             }
         }
+    }
+
+    /// <summary>
+    /// Which sky the sweep was run under, captioned at the top right of the figure.
+    /// </summary>
+    /// <remarks>
+    /// Stated in both directions rather than only when there is cloud. A figure that says
+    /// nothing about its sky is ambiguous the moment a cloudy one exists beside it, and these
+    /// are saved as PNGs and dropped into documents where the two are easy to confuse - they
+    /// differ by about 6% in forcing and nearly a kelvin of warming at 1000 ppm.
+    ///
+    /// Right-aligned because the legend runs left to right along the same row and can wrap to a
+    /// second line; anchoring this to the opposite edge keeps them off each other whatever the
+    /// legend does.
+    /// </remarks>
+    /// <returns>The x the caption starts at, so the legend can stop short of it.</returns>
+    private static float DrawSkyCaption(Graphics g, Rectangle bounds, IReadOnlyList<Co2Sweep> sweeps,
+        Font font, Brush mutedBrush)
+    {
+        if (sweeps.Count == 0) return bounds.Right - 12;
+
+        double fraction = sweeps[0].CloudFraction;
+        string text = fraction > 0.0
+            ? string.Format(Inv, "{0:P0} cloud cover", fraction)
+            : "clear sky — no cloud";
+
+        float width = g.MeasureString(text, font).Width;
+        float left = bounds.Right - 12 - width;
+
+        g.DrawString(text, font, mutedBrush, left, bounds.Top + MarginTop - 6);
+
+        return left;
     }
 
     private static void DrawSeries(Graphics g, IReadOnlyList<Co2Sweep> sweeps,
