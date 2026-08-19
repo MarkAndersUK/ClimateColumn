@@ -176,7 +176,7 @@ public sealed class ColumnModel
     /// With no cloud the two are the same object and there is exactly one solve, so the cost of
     /// this machinery to a caller who is not using clouds is a boolean test per step.
     /// </remarks>
-    private static (RadiationResult AllSky, RadiationResult Clear) SolveSky(Column column)
+    public static (RadiationResult AllSky, RadiationResult Clear) SolveSky(Column column)
     {
         if (!column.Options.HasCloud)
         {

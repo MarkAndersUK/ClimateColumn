@@ -290,6 +290,66 @@ public class CloudTests
             $"it ({bare:F2} to {overheated:F2} K) - which is why WithTypicalCloud halves the gas");
     }
 
+    /// <summary>
+    /// Forcing against the reference state is zero at the reference concentration, by
+    /// construction - nothing has been changed. That has to hold with a cloud deck too.
+    /// </summary>
+    /// <remarks>
+    /// This is the test that was missing. The forcing calculation solved the perturbed column
+    /// directly, which returns the <em>fully cloudy</em> sky, and differenced it against a
+    /// baseline whose outgoing longwave is the all-sky blend of clear and cloudy. Two different
+    /// skies subtracted from each other is not a forcing, and the give-away is exactly here: it
+    /// did not come out zero where it must.
+    ///
+    /// Cloud-free the two paths are the same single solve, so every existing configuration was
+    /// unaffected and nothing failed. A cloud fraction is what separates them.
+    /// </remarks>
+    [DataTestMethod]
+    [DataRow(0.0)]
+    [DataRow(0.33)]
+    [DataRow(0.67)]
+    [DataRow(1.0)]
+    public void ForcingIsZeroAtTheReferenceWhateverTheSky(double fraction)
+    {
+        var forcings = Co2Sweep.ForcingCurve(ppm =>
+        {
+            var o = Cloudy(fraction, segments: 30);
+            o.Co2Concentration = ppm;
+            o.Co2AbsorberFraction = 0.1;
+            return o;
+        });
+
+        Assert.AreEqual(0.0, forcings[0], 1e-9,
+            $"at {fraction:P0} cloud the reference concentration must force by exactly nothing");
+
+        Assert.IsTrue(forcings[^1] > 0.0,
+            $"at {fraction:P0} cloud, more CO2 should still force positively " +
+            $"({forcings[^1]:F4} W/m2)");
+    }
+
+    /// <summary>
+    /// A cloud deck sits below most of the CO2 that matters, so it masks part of the forcing:
+    /// the column it hides was already absorbing what the extra CO2 would have absorbed.
+    /// </summary>
+    [TestMethod]
+    public void CloudMasksPartOfTheCarbonDioxideForcing()
+    {
+        double Forcing(double fraction) => Co2Sweep.ForcingCurve(ppm =>
+        {
+            var o = Cloudy(fraction, segments: 30);
+            o.Co2Concentration = ppm;
+            o.Co2AbsorberFraction = 0.1;
+            return o;
+        })[^1];
+
+        double clear = Forcing(0.0);
+        double clouded = Forcing(0.67);
+
+        Assert.IsTrue(clouded < clear,
+            $"a cloud deck should mask some of the CO2 forcing, not add to it " +
+            $"({clear:F4} clear against {clouded:F4} at 67% cloud)");
+    }
+
     [DataTestMethod]
     [DataRow(-0.1)]
     [DataRow(1.1)]

@@ -236,7 +236,17 @@ public sealed class Co2Sweep
         held.SurfaceTemperature = baseline.SurfaceTemperature;
         held.DistributeOpticalDepth();
 
-        return baseline.Radiation.OutgoingLongwave - RadiationSolver.Solve(held).OutgoingLongwave;
+        // Both sides must see the same sky. The baseline's outgoing longwave is the all-sky
+        // result - clear and cloudy blended by cloud fraction - so the perturbed side has to be
+        // blended too. Calling the solver directly returns the fully cloudy column, and
+        // differencing that against an all-sky baseline is not a forcing at all: it is the
+        // difference between two different planets, and at the reference concentration, where
+        // the forcing is zero by construction, it does not even come out zero.
+        //
+        // Cloud-free this is the same single solve it always was, which is why nothing caught
+        // it until clouds were switched on.
+        return baseline.Radiation.OutgoingLongwave -
+               ColumnModel.SolveSky(held).AllSky.OutgoingLongwave;
     }
 
     /// <summary>The configuration used for the README's no-feedback calibration.</summary>
