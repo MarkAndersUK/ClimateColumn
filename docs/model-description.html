@@ -312,9 +312,10 @@
   <header class="mast">
     <span class="eyebrow">Model reference</span>
     <h1>A one-dimensional radiative&#8209;convective atmospheric column</h1>
-    <p class="standfirst">13,507 lines of C# that march a 50&nbsp;km column of air to
+    <p class="standfirst">17,200 lines of C# that march a 50&nbsp;km column of air to
       radiative–convective equilibrium, with longwave opacity built from real HITRAN line
-      data rather than a tuned grey constant.</p>
+      data rather than a tuned grey constant — and with the far wings of CO<sub>2</sub>'s
+      15&nbsp;µm band corrected for the sub-Lorentzian shape that sets its forcing.</p>
   </header>
 
   <section class="key">
@@ -324,396 +325,617 @@
       the state in which the column radiates to space exactly what it absorbs, and no level
       is left with a net heating tendency.</p>
 
+    <p>Two balances have to close at once, and they are not independent. At the top of the
+      atmosphere the outgoing longwave must equal the absorbed sunlight. At the surface, the
+      absorbed sunlight plus the back radiation must equal what the ground emits plus what
+      convection and evaporation carry away. A column can satisfy either alone; equilibrium
+      is where both hold together.</p>
+
     <dl class="results">
       <div class="result">
-        <dt>Surface</dt>
+        <dt>Surface temperature</dt>
         <dd>286.797<span class="unit">K</span></dd>
+        <dd class="note">13.65 °C, default configuration</dd>
       </div>
       <div class="result">
         <dt>Outgoing longwave</dt>
-        <dd>238.175<span class="unit">W/m²</span></dd>
-      </div>
-      <div class="result">
-        <dt>Convecting to</dt>
-        <dd>3.44<span class="unit">km</span></dd>
+        <dd>238.175<span class="unit">W m⁻²</span></dd>
+        <dd class="note">equal to absorbed solar at equilibrium</dd>
       </div>
       <div class="result">
         <dt>Greenhouse effect</dt>
-        <dd>+32.2<span class="unit">K</span></dd>
+        <dd>137.8<span class="unit">W m⁻²</span></dd>
+        <dd class="note">surface emission minus outgoing longwave</dd>
+      </div>
+      <div class="result">
+        <dt>Convecting layer</dt>
+        <dd>3.44<span class="unit">km</span></dd>
+        <dd class="note">above it, radiation alone</dd>
       </div>
     </dl>
 
-    <p>Those are the default configuration&rsquo;s numbers: 1361&nbsp;W/m² solar constant,
-      albedo 0.30, surface emissivity 0.98, absorber optical depth 1.8. The emission
-      temperature is 254.578&nbsp;K, so the greenhouse effect is the 32.2&nbsp;K gap between
-      that and the ground.</p>
+    <p>Everything below is how those numbers are arrived at, and — equally — which of them
+      are predictions and which are calibrations. That distinction is kept explicit
+      throughout, because a model of this kind can be made to produce almost any answer if
+      the difference is allowed to blur.</p>
   </section>
 
   <section>
-    <h2>Vertical structure</h2>
-    <p>Eighty segments of 625&nbsp;m each, from the surface to 50&nbsp;km. Pressure and the
-      initial temperature profile come from the U.S. Standard Atmosphere 1976; each segment&rsquo;s
-      air mass is its pressure drop divided by gravity, which fixes its heat capacity and its
-      share of the absorber.</p>
-
-    <figure>
-      <div class="figbox">
-        <svg viewBox="0 0 560 250" role="img" aria-label="Diagram of the column: 80 segments from the surface to 50 km, with upward and downward longwave fluxes at each interface, a convecting layer in the lowest 3.44 km, and the surface energy budget beneath.">
-          <!-- column body -->
-          <rect x="150" y="18" width="150" height="196" fill="var(--sunk)" stroke="var(--rule)"/>
-          <!-- convecting layer -->
-          <rect x="150" y="200" width="150" height="14" fill="var(--warm-soft)" stroke="var(--warm)" stroke-opacity=".45"/>
-          <!-- segment rules -->
-          <g stroke="var(--rule)" stroke-width="1" stroke-opacity=".8">
-            <line x1="150" y1="46" x2="300" y2="46"/>
-            <line x1="150" y1="74" x2="300" y2="74"/>
-            <line x1="150" y1="102" x2="300" y2="102"/>
-            <line x1="150" y1="130" x2="300" y2="130"/>
-            <line x1="150" y1="158" x2="300" y2="158"/>
-            <line x1="150" y1="186" x2="300" y2="186"/>
-          </g>
-          <!-- surface -->
-          <rect x="150" y="214" width="150" height="10" fill="var(--ink-2)"/>
-
-          <!-- flux arrows: up (warm), down (warm dashed) -->
-          <defs>
-            <marker id="up" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto">
-              <path d="M4,0 L8,8 L0,8 Z" fill="var(--warm)"/>
-            </marker>
-            <marker id="dn" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto">
-              <path d="M4,8 L8,0 L0,0 Z" fill="var(--warm)"/>
-            </marker>
-            <marker id="sun" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto">
-              <path d="M4,8 L8,0 L0,0 Z" fill="var(--cold)"/>
-            </marker>
-          </defs>
-          <g stroke="var(--warm)" stroke-width="1.6" fill="none">
-            <line x1="196" y1="212" x2="196" y2="24" marker-end="url(#up)"/>
-            <line x1="254" y1="24" x2="254" y2="212" marker-end="url(#dn)" stroke-dasharray="5 4"/>
-          </g>
-          <!-- solar -->
-          <line x1="120" y1="24" x2="120" y2="212" stroke="var(--cold)" stroke-width="1.6" marker-end="url(#sun)" fill="none"/>
-
-          <!-- labels -->
-          <g class="svg-mono" font-size="10" fill="var(--ink-3)">
-            <text x="310" y="24">50 km — top of column</text>
-            <text x="310" y="207">3.44 km — convective top</text>
-            <text x="310" y="228">surface</text>
-            <text x="94" y="16" text-anchor="middle" fill="var(--cold)">solar</text>
-            <text x="196" y="14" text-anchor="middle" fill="var(--warm)">F↑</text>
-            <text x="256" y="14" text-anchor="middle" fill="var(--warm)">F↓</text>
-            <text x="140" y="120" text-anchor="end">80 × 625 m</text>
-          </g>
-          <g class="svg-sans" font-size="10.5" fill="var(--ink-2)">
-            <text x="310" y="120">longwave: two-stream</text>
-            <text x="310" y="136">Schwarzschild recurrence,</text>
-            <text x="310" y="152">exact per segment</text>
-          </g>
-        </svg>
-      </div>
-      <figcaption><b>The column.</b> Longwave fluxes live on the 81 interfaces; temperature,
-        density and absorber live on the 80 segments. Solar absorption is deposited directly.
-        The lowest 3.44&nbsp;km is held on the critical lapse rate by convective adjustment.</figcaption>
-    </figure>
-  </section>
-
-  <section>
-    <h2>Longwave transfer</h2>
-    <p>Emission follows the Koenigsberger volumetric law — a slab of thickness d<em>z</em>
-      emits <span class="num">4ε&prime;σT⁴</span>d<em>z</em> per unit horizontal area, split
-      equally between the two hemispheres. Kirchhoff&rsquo;s law then sets the hemispheric
-      absorptivity equal to the emissivity, which pins the extinction coefficient in flux
-      space at <span class="num">Dε&prime;</span>.</p>
+    <h2>The vertical grid</h2>
+    <p>The column is divided into segments of equal geometric thickness from the surface to
+      50 km. Each carries a pressure at its lower and upper interface, a mid-layer pressure,
+      and an air mass per unit horizontal area obtained from hydrostatic balance:</p>
 
     <div class="eq">
-      dF<sup>±</sup>/d<em>z</em> = ∓ D ε&prime; ( F<sup>±</sup> − σT⁴ )
-      <span class="gloss">Integrated across a constant-temperature segment this gives an
-        exponential recurrence that is exact at any optical thickness — subdividing an
-        isothermal slab leaves its emission unchanged.</span>
+      <span class="expr">dp = −ρ g dz</span>
+      <span class="gloss">so the mass supporting a pressure drop is <em>Δp/g</em>, independent
+        of the density profile</span>
     </div>
 
-    <p>The diffusivity factor is <strong>D&nbsp;=&nbsp;2</strong>, and that is a derivation
-      rather than a fit. The exact hemispheric transmission is
-      <span class="num">2E₃(τ)</span>, which expands as <span class="num">1 − 2τ</span> for
-      small τ; matching the volumetric emission law in its own optically thin limit therefore
-      forces D&nbsp;=&nbsp;2. The commonly used 1.66 is an empirical compromise for thick
-      paths, and is available for comparison runs.</p>
+    <p>Pressures come from the US Standard Atmosphere. That standard is defined on
+      <em>geopotential</em> altitude, which measures height in units of work done against a
+      constant reference gravity, not in metres. The two differ by</p>
+
+    <div class="eq">
+      <span class="expr">H = r₀ z / (r₀ + z)</span>
+      <span class="gloss">about 140 m at 50 km on Earth</span>
+    </div>
+
+    <p>and the model converts between them rather than treating the standard's tabulated
+      heights as geometric. Ignoring the distinction would put the top of the column in the
+      wrong place by more than the thickness of a segment.</p>
+
+    <p>Every flux in the model is <strong>power per unit area of planet surface</strong>,
+      including inside the atmosphere. That convention is what makes the energy budgets close
+      arithmetically, and it is what allows spherical geometry to be added later as a single
+      scaling rather than a rewrite.</p>
   </section>
 
   <section class="key">
-    <h2>Spectral treatment</h2>
-    <p>A grey column gets the greenhouse effect roughly right and the CO₂ response badly
-      wrong, so opacity is built from measured line data instead. Line lists for
-      <strong>six molecules</strong> — H₂O (rotational and bending), CO₂, O₃, CH₄, N₂O — are
-      fetched from HITRAN, laid on a shared wavenumber grid, and the band boundaries are then
-      <em>derived</em> from where those lines actually sit rather than chosen by hand.</p>
-
-    <p>The derivation recovers the atmospheric window and ozone&rsquo;s position inside it
-      without being told either exists. Six molecules in sixteen bands cover
-      <strong>98.9&nbsp;%</strong> of a 260&nbsp;K Planck function, leaving a 1.1&nbsp;%
-      remainder.</p>
-
-    <h3>Correlated-k</h3>
-    <p>Within each band, absorption varies by orders of magnitude between line cores and
-      wings, so a single mean coefficient is useless. The resolved spectrum is sorted into a
-      cumulative distribution and integrated with a quadrature over that distribution:</p>
+    <h2>Longwave emission: the Koenigsberger equation</h2>
+    <p>A volume of gas at temperature <em>T</em> emits</p>
 
     <div class="eq">
-      T(u) = ∫₀¹ e<sup>−k(g)u</sup> dg ≈ Σⱼ wⱼ e<sup>−kⱼu</sup>
-      <span class="gloss">Gauss–Hermite nodes in log k, which at 16 points is about 200×
-        more accurate than equal-probability midpoints. Sixteen g-points per band are used by
-        default, with lines evaluated out to 400&nbsp;cm⁻¹ from centre — see the note on the
-        logarithm for why that cutoff is the parameter that matters.</span>
+      <span class="expr">dq = 4 ε′ σ T⁴ dV</span>
+      <span class="gloss">ε′ is a volumetric emission coefficient, m⁻¹</span>
     </div>
 
-    <p>A line-by-line calculation is kept as the reference the band approximations are judged
-      against. It is what showed that grey bands are not merely imprecise but
-      catastrophically wrong: at τ&nbsp;=&nbsp;10 a grey band transmits 5×10⁻⁵ where real
-      water vapour transmits 0.504.</p>
+    <p>The factor of four is not decorative: it is the ratio of the surface area of a sphere
+      to the area of its shadow, and it is what converts a directional emission into an
+      isotropic one. Because every quantity here is per unit horizontal area,
+      <em>dV</em> reduces to a thickness <em>dz</em>, and a segment's total emission is
+      <em>4 ε′ σ T⁴ dz</em>.</p>
+
+    <p>This is the optically thin limit. The solver does not use it directly — it uses the
+      exponential form below, which reduces to exactly this as <em>dz</em> → 0, and the model
+      checks that it does.</p>
   </section>
 
   <section class="key">
-    <h2>Why the CO₂ response is logarithmic</h2>
-    <p>Doubling CO₂ adds about the same forcing whatever the starting concentration —
-      285&nbsp;→&nbsp;570&nbsp;ppm gives roughly what 570&nbsp;→&nbsp;1140 gives. This is
-      not a thermodynamic law and it is not an insulation-thickness effect. It is a property
-      of the <em>shape of the absorption spectrum</em>, and it comes out in three steps.</p>
+    <h2>Why the diffusivity factor is exactly two</h2>
+    <p>Radiation crosses a slab in every direction, not just vertically. A ray at zenith angle
+      θ travels a path 1/cos θ longer than the vertical one, so a flux calculation has to
+      integrate over the hemisphere. That integral gives the exponential integral
+      <em>E₃</em>, and the transmittance of a slab of vertical optical depth τ is
+      2E₃(τ).</p>
 
-    <h3>1 · The band centre is already saturated</h3>
-    <p>At present-day concentrations the core of the 15&nbsp;µm CO₂ band is completely opaque.
-      Radiation there already escapes from high in the atmosphere, and adding CO₂ changes
-      nothing: an opaque band cannot get more opaque. So the forcing cannot come from the
-      centre.</p>
-
-    <h3>2 · It comes from the wings, and the wing shape sets the law</h3>
-    <p>What adding CO₂ does is widen the opaque interval outward into the flanks, where
-      absorption is still weak. The forcing is roughly the width of that interval times the
-      Planck difference between the surface and the level the band now emits from. So
-      <strong>the law follows directly from how absorption falls off with distance from the
-      band centre.</strong></p>
-    <p>If absorption decays <em>exponentially</em> away from the centre,
-      <span class="num">k(ν) = k₀ e<sup>−|Δν|/a</sup></span>, the band is opaque wherever
-      <span class="num">k(ν)·u &gt; 1</span>, i.e. wherever</p>
+    <p>Two-stream models replace that integral with a single effective path, <em>D</em> times
+      the vertical one. The usual choices are <em>D</em> = 1.66 (Elsasser) or 2. This model
+      takes <em>D</em> = 2, and the reason is that it is the only value consistent with the
+      emission law above:</p>
 
     <div class="eq">
-      |Δν| &lt; a · ln(k₀u)   ⟹   W(u) = 2a · ln(k₀u)
-      <span class="gloss">The opaque width grows as the logarithm of the absorber amount, so
-        F ≈ W·ΔB gives dF/d(ln u) = constant. Each doubling widens the opaque interval by the
-        same increment — which is exactly what "logarithmic forcing" means.</span>
+      <span class="expr">2E₃(τ) → 1 − 2τ&nbsp;&nbsp;as τ → 0</span>
+      <span class="gloss">so absorptivity → 2τ, matching the 4ε′σT⁴ emission exactly</span>
     </div>
 
-    <figure>
-      <div class="figbox">
-        <svg viewBox="0 0 560 210" role="img" aria-label="Diagram showing an exponentially decaying absorption coefficient plotted logarithmically as a V shape. A horizontal threshold line marks where optical depth equals one. Successive doublings of CO2 raise the curve by equal steps, pushing the intersection outward by equal increments in wavenumber.">
-          <!-- axes -->
-          <line x1="60" y1="170" x2="530" y2="170" stroke="var(--rule)" stroke-width="1"/>
-          <line x1="60" y1="20" x2="60" y2="170" stroke="var(--rule)" stroke-width="1"/>
-
-          <!-- the tau = 1 threshold -->
-          <line x1="60" y1="118" x2="530" y2="118" stroke="var(--cold)" stroke-width="1.4" stroke-dasharray="6 4"/>
-          <text x="534" y="121" class="svg-mono" font-size="9.5" fill="var(--cold)">τ = 1</text>
-
-          <!-- three V curves: each doubling shifts k up by a constant in log space -->
-          <!-- base -->
-          <path d="M295,150 L110,32" fill="none" stroke="var(--warm)" stroke-width="1.7" opacity=".38"/>
-          <path d="M295,150 L480,32" fill="none" stroke="var(--warm)" stroke-width="1.7" opacity=".38"/>
-          <!-- x2 -->
-          <path d="M295,132 L92,32" fill="none" stroke="var(--warm)" stroke-width="1.7" opacity=".65"/>
-          <path d="M295,132 L498,32" fill="none" stroke="var(--warm)" stroke-width="1.7" opacity=".65"/>
-          <!-- x4 -->
-          <path d="M295,114 L74,32" fill="none" stroke="var(--warm)" stroke-width="1.9"/>
-          <path d="M295,114 L516,32" fill="none" stroke="var(--warm)" stroke-width="1.9"/>
-
-          <!-- equal-increment markers on the threshold -->
-          <g fill="var(--ink)" stroke="var(--paper)" stroke-width="1.5">
-            <circle cx="345" cy="118" r="3.6"/>
-            <circle cx="373" cy="118" r="3.6"/>
-            <circle cx="401" cy="118" r="3.6"/>
-          </g>
-          <g stroke="var(--ink-3)" stroke-width="1">
-            <line x1="345" y1="126" x2="345" y2="146"/>
-            <line x1="373" y1="126" x2="373" y2="146"/>
-            <line x1="401" y1="126" x2="401" y2="146"/>
-          </g>
-          <g stroke="var(--ink-2)" stroke-width="1.2">
-            <line x1="345" y1="152" x2="373" y2="152"/>
-            <line x1="373" y1="158" x2="401" y2="158"/>
-          </g>
-          <text x="359" y="149" class="svg-mono" font-size="9" fill="var(--ink-2)" text-anchor="middle">Δ</text>
-          <text x="387" y="170" class="svg-mono" font-size="9" fill="var(--ink-2)" text-anchor="middle">Δ</text>
-
-          <!-- labels -->
-          <g class="svg-mono" font-size="9.5" fill="var(--ink-3)">
-            <text x="295" y="186" text-anchor="middle">band centre ν₀</text>
-            <text x="52" y="26" text-anchor="end">log k</text>
-            <text x="524" y="186" text-anchor="end">wavenumber →</text>
-          </g>
-          <g class="svg-sans" font-size="10" fill="var(--warm)">
-            <text x="524" y="45" text-anchor="end">4× CO₂</text>
-            <text x="506" y="58" text-anchor="end" opacity=".7">2×</text>
-            <text x="488" y="71" text-anchor="end" opacity=".5">1×</text>
-          </g>
-        </svg>
-      </div>
-      <figcaption><b>Equal steps from equal doublings.</b> With absorption decaying
-        exponentially away from the band centre, plotting log&nbsp;k gives straight flanks.
-        Each doubling of CO₂ lifts the whole curve by a fixed amount, so the crossing of the
-        τ&nbsp;=&nbsp;1 threshold moves outward by the <em>same</em> increment Δ every time.
-        The opaque width grows logarithmically, and so does the forcing.</figcaption>
-    </figure>
-
-    <h3>3 · The wing shape is a fact about CO₂, not a general rule</h3>
-    <p>This is where the explanation earns its keep, because other wing shapes give other
-      laws. A single isolated pressure-broadened line has a Lorentz far wing,
-      <span class="num">k ∝ 1/Δν²</span>; that gives an opaque width growing as
-      <span class="num">√u</span>, so an isolated line would produce a <strong>square-root
-      law, not a logarithm</strong>. Purely Gaussian flanks would give
-      <span class="num">√(ln u)</span>.</p>
-    <p>So the logarithm is not automatic. It holds because the 15&nbsp;µm band&rsquo;s
-      collective envelope — many overlapping rotational lines, their strengths set by the
-      Boltzmann distribution over rotational states — happens to decay close to exponentially
-      across the range that matters. That is an empirical property of the measured spectrum;
-      it is the subject of current literature rather than something derivable from a one-line
-      argument, and it is the reason the logarithm eventually fails at concentrations far
-      outside the fitted range.</p>
-
-    <div class="caveat">
-      <span class="label">What this model demonstrates</span>
-      <p>The claim above is checkable here, and it checks out from both directions. A grey
-        absorber has no spectral structure at all, and its forcing ratio against the accepted
-        law <em>grows</em> from 1.17 to 2.14 across 285–1000&nbsp;ppm — the wrong shape, not
-        merely the wrong size. Replace it with the sixteen HITRAN-derived bands and the response
-        straightens out: fitting <span class="num">F = A ln(C/C₀)</span> gives A between 6.84 and
-        7.10&nbsp;W&nbsp;m⁻² per ln, a <strong>3.6&nbsp;% drift</strong> across a 3.5× range.</p>
-      <p>The logarithm arrives with the spectroscopy and cannot be produced without it. What
-        remains wrong is a near-uniform scale factor of about 1.3, which is a far more tractable
-        failure than one that changes shape with concentration.</p>
-      <p><strong>The resolution had to be earned, not assumed.</strong> An earlier version of this
-        configuration used 8 bands and a 15&nbsp;cm⁻¹ wing cutoff and reported almost exactly the
-        same coefficient — but by error cancellation. Widening the cutoff <em>alone</em> took it to
-        9.35, badly wrong, because truncated wings and a coarse band split had been compensating.
-        Since the logarithm comes from the far wings, throwing them away is the one approximation
-        this figure cannot afford. The converged settings are 16 bands, 16 g-points and a
-        400&nbsp;cm⁻¹ cutoff; the published ratio moved from 1.32 to 1.33.</p>
-    </div>
-
-    <p>The chart the test suite generates compares the two forcings <em>directly in
-      W/m²</em> — the model&rsquo;s own instantaneous forcing against the reference
-      equilibrium, beside 5.35&nbsp;ln(C/C₀). At 1000&nbsp;ppm that is 8.909 against 6.716.
-      Nothing is converted, so no climate sensitivity is borrowed; an earlier version plotted
-      temperature instead, which required the model&rsquo;s own sensitivity and thereby made
-      the reference partly a restatement of the thing it was testing.</p>
+    <p>Choosing <em>D</em> = 1.66 would make the column absorb 17 % less than it emits in the
+      thin limit, which violates Kirchhoff's law at the level of the model's own
+      construction. The better far-field accuracy of 1.66 is real, but it is bought by
+      breaking an identity the rest of the model depends on. <em>D</em> is a parameter; the
+      default is the consistent one.</p>
   </section>
 
   <section>
-    <h2>Convection and the surface</h2>
-    <p>Three non-radiative terms. A bulk sensible heat flux
-      <span class="num">h_c(T_s − T_air)</span> with
-      <span class="num">h_c = 5.8 + 4.1v</span>; an optional latent flux; and a
-      critical-lapse-rate adjustment that mixes any superadiabatic block onto exactly
-      6.5&nbsp;K/km while conserving <span class="num">Σ CᵢTᵢ</span>.</p>
-    <p>The surface is deliberately excluded from the adjustment — it exchanges heat with the
-      air only through radiation and the turbulent fluxes, and mixing the surface reservoir
-      too would double-count that transfer and leave its energy budget open.</p>
-    <p>Evaporation is <strong>off by default</strong>. It is the largest non-radiative term in
-      a real surface budget (~80&nbsp;W/m² against ~20 for sensible heat), but
-      <span class="num">h_c</span> here was calibrated with the sensible flux standing in for
-      both, so switching it on is a different model rather than a repair to this one. Turned
-      on, it reproduces Earth&rsquo;s <em>partition</em> — the Bowen ratio hits 0.26 near
-      moisture availability 0.35 — but not the magnitude: the total turbulent flux tops out
-      near 41&nbsp;W/m² against Earth&rsquo;s ~100, because
-      <span class="num">h_c</span> is a building-physics film coefficient rather than a
-      global-mean bulk transfer coefficient.</p>
+    <h2>The two-stream recurrence</h2>
+    <p>Upward and downward fluxes are marched across segments. For a segment of hemispheric
+      optical thickness τ = <em>D ε′ dz</em>, with transmittance <em>t</em> = e<sup>−τ</sup>:</p>
+
+    <div class="eq">
+      <span class="expr">F<sub>i+1</sub><sup>↑</sup> = t F<sub>i</sub><sup>↑</sup> + (1 − t) σT<sub>i</sub>⁴</span>
+      <span class="gloss">and symmetrically downward, from the top</span>
+    </div>
+
+    <p><strong>This is exact, not a discretisation.</strong> For a segment at constant
+      temperature the Schwarzschild equation integrates to precisely this expression, which
+      has a consequence worth stating: subdividing an isothermal slab leaves its emission
+      unchanged. Grid refinement in this model therefore tests the <em>temperature
+      structure</em>, not the radiative transfer, and any convergence error that shows up is
+      about where the temperature is sampled rather than about how radiation is propagated.</p>
+
+    <p>The boundary conditions are that nothing enters the top of the column, and that the
+      surface emits ε<sub>s</sub>σT<sub>s</sub>⁴ and reflects the fraction
+      (1 − ε<sub>s</sub>) of the back radiation reaching it.</p>
   </section>
 
-  <section>
-    <h2>Geometry, optionally</h2>
-    <p>The column is plane-parallel by default. Three geometric refinements can be switched
-      on, and the interesting result is how differently they matter.</p>
+  <section class="key">
+    <h2>From a grey slab to real spectroscopy</h2>
+    <p>A grey model gives every wavelength the same opacity. Real gases do not: CO<sub>2</sub>
+      is nearly opaque at 15 µm and transparent at 10, and that difference is the whole reason
+      the response to more CO<sub>2</sub> is logarithmic rather than linear.</p>
+
+    <p>The model can be run either way. In its spectral mode it takes HITRAN line lists for
+      six absorbers — water vapour in two bands, CO<sub>2</sub>'s 15 µm band, ozone at 9.6 µm,
+      methane at 7.7 µm and nitrous oxide at 7.8 µm — and derives bands from the line data
+      itself:</p>
+
+    <ol class="plain">
+      <li><strong>Resolve the spectrum.</strong> Each line is given a Lorentz profile with
+        half-width γ = γ<sub>ref</sub>(p/p<sub>ref</sub>)(296/T)<sup>n</sup>, where <em>n</em>
+        is HITRAN's own temperature exponent. Collisions are more frequent at higher pressure
+        and faster at higher temperature, and the two pull the width in opposite directions —
+        a stratospheric layer at a tenth of an atmosphere and 220 K comes out about 12 %
+        broader than pressure alone would give.</li>
+      <li><strong>Split into bands.</strong> Band edges are placed so each carries a
+        comparable share of the Planck function at a representative temperature, rather than
+        being equally spaced in wavenumber.</li>
+      <li><strong>Measure a k-distribution per band.</strong> The resolved absorption
+        coefficients inside a band are sorted and reduced to a small number of quadrature
+        points — the correlated-k method. Sorting is what makes this work: the reordered
+        spectrum is smooth, so a handful of points integrates it accurately where thousands
+        would be needed in wavenumber order.</li>
+    </ol>
+
+    <p>All six gases are derived on one shared wavenumber grid. Deriving them separately
+      would produce overlapping band sets — N<sub>2</sub>O's 7.8 µm band sits inside
+      methane's, and water vapour is everywhere — and overlapping bands each claim their own
+      share of every emitter's Planck function, so the spectrum would sum to more than
+      one.</p>
+  </section>
+
+  <section class="key">
+    <h2>The far wings, and the correction that changed the answer</h2>
+    <p>The Lorentz profile comes from the impact approximation: collisions treated as
+      instantaneous compared with the time between them. That holds near line centre and
+      fails far from it. At a detuning of tens of cm⁻¹ the radiation is probing the collision
+      itself, over times short enough that its finite duration matters, and real
+      CO<sub>2</sub> wings fall off <strong>faster</strong> than Lorentzian.</p>
+
+    <p>That is not a detail here. This model's CO<sub>2</sub> forcing comes almost entirely
+      from the far wings — the band core is saturated, so only the wings can still respond to
+      more gas — which is precisely <em>why</em> the response is logarithmic. The far-wing
+      shape is the thing that sets the forcing coefficient.</p>
+
+    <p>The evidence arrived before the explanation. A convergence study over the wing cutoff
+      gave a forcing coefficient of 5.15, 6.63, 6.88 and 6.98 W m⁻² per ln as the cutoff
+      opened from 100 to 800 cm⁻¹ — the answer was being set by how far out the wings were
+      integrated, and it converged on a value about 1.30 times the accepted 5.35.</p>
+
+    <p>The correction is the three-segment exponential of Perrin &amp; Hartmann (1989),
+      multiplying the Lorentz profile:</p>
+
+    <div class="eq">
+      <span class="expr">χ(s) = exp[ −B₁(s−s₁) − B₂(s−s₂)<sup>+</sup> − B₃(s−s₃)<sup>+</sup> ]</span>
+      <span class="gloss">s = |ν − ν₀|, breakpoints at 3, 30 and 120 cm⁻¹, continuous at each</span>
+    </div>
+
+    <p>It is applied to <strong>CO<sub>2</sub> alone</strong>. A χ factor is fitted to one
+      band of one gas; giving CO<sub>2</sub>'s to water vapour would be inventing spectroscopy
+      rather than correcting it. It is also applied <em>outside</em> the k-distribution,
+      because droplet-free line absorption and the χ correction are different functions of
+      wavenumber and folding them together would misplace the correction.</p>
 
     <div class="tablewrap">
       <table>
-        <caption>Each measured against the 286.797&nbsp;K default. The two that redistribute
-          energy nearly cancel; the one that changes how much energy arrives dominates by an
-          order of magnitude.</caption>
+        <caption>Measured in two steps, so the shape change and the loading change are not confounded</caption>
         <thead>
-          <tr><th>Refinement</th><th class="n">ΔT<sub>s</sub></th><th>What it adds</th></tr>
+          <tr><th></th><th class="n">absorber scale</th><th class="n">base T<sub>s</sub></th>
+              <th class="n">A</th><th class="n">vs accepted</th></tr>
         </thead>
         <tbody>
-          <tr><td>Spherical shells</td><td class="n">−0.016 K</td><td>shell area and the −(2/r)F flux dilution</td></tr>
-          <tr><td>Variable gravity</td><td class="n">+0.012 K</td><td>inverse-square g, geopotential grid</td></tr>
-          <tr><td>TOA solar disc</td><td class="n">+0.309 K</td><td>limb rays that miss the planet</td></tr>
+          <tr><td>Pure Lorentz wings</td><td class="n">14.578</td><td class="n">286.796 K</td>
+              <td class="n">6.988</td><td class="n">1.31×</td></tr>
+          <tr><td>χ factor, same loading</td><td class="n">14.578</td><td class="n">285.109 K</td>
+              <td class="n">5.073</td><td class="n">0.95×</td></tr>
+          <tr><td>χ factor, recalibrated</td><td class="n">15.869</td><td class="n">286.796 K</td>
+              <td class="n">5.091</td><td class="n">0.95×</td></tr>
         </tbody>
       </table>
     </div>
 
-    <p>Sphericity turns on one identity: writing the two-stream equation in terms of
-      <span class="num">G = (r/r₀)²F</span> removes the geometric term entirely and leaves
-      the plane-parallel equation with its source scaled by
-      <span class="num">(r/r₀)²</span> — so the exact recurrence survives and sphericity
-      enters in one line.</p>
-    <p>The solar cross-section is the one that changes the answer, and the obvious
-      implementation of it is wrong twice: the extra light is <em>limb</em> light, grazing
-      through the atmosphere and out the other side, so it never touches the surface and the
-      albedo has nothing to act through. Done properly as a slant-path integral over impact
-      parameter, 2.563 of the 5.362&nbsp;W/m² intercepted is absorbed — a third less than
-      rescaling by the area ratio would give — and it lands at 19.2&nbsp;km rather than at
-      the ground.</p>
+    <p>Essentially the entire over-forcing was that one piece of missing spectroscopy. Two
+      things are worth reading off the table. Suppressing the wings removes absorption, so the
+      base state cooled 1.7 K and the gas loading had to come back up — but
+      <strong>recalibrating barely moved the coefficient</strong>, 5.073 to 5.091, which is
+      the reassurance that it is a property of the spectroscopy and not of how much gas was
+      put in.</p>
+
+    <p class="caveat"><strong>A caveat that travels with these numbers.</strong> The
+      functional form is Perrin &amp; Hartmann's; the coefficients are representative values
+      for the CO<sub>2</sub> ν₂ band near 296 K and have <em>not</em> been checked against the
+      original paper. This is a correctly shaped correction rather than a faithful
+      reproduction of a published fit. Nothing was tuned to reach 5.35 — the coefficient is
+      reported as it came out, which is the only way the forcing stays a prediction.</p>
+  </section>
+
+  <section class="key">
+    <h2>Why the response is logarithmic</h2>
+    <p>Doubling the CO<sub>2</sub> doubles the absorber, but does not double the forcing. The
+      reason is spectral saturation, and it can be seen in one line of algebra.</p>
+
+    <p>At the centre of the 15 µm band the atmosphere is already opaque: adding gas there
+      changes nothing, because no more radiation can be stopped. The only place extra
+      CO<sub>2</sub> can act is in the wings, where the band is still partly transparent. So
+      the forcing is set by how fast the <em>opaque width</em> of the band grows.</p>
+
+    <p>If absorption falls off exponentially with distance from band centre, k(ν) ≈
+      k₀e<sup>−|ν−ν₀|/a</sup>, the band is opaque wherever <em>k u</em> &gt; 1, which happens
+      out to</p>
+
+    <div class="eq">
+      <span class="expr">W = 2a ln(k₀ u)</span>
+      <span class="gloss">so F ∝ ln u — the logarithm, in one step</span>
+    </div>
+
+    <p>The shape of the wing is doing all the work, and a different wing gives a different
+      law. A Lorentzian wing, falling as 1/(ν−ν₀)², would give <em>W</em> ∝ √u and hence a
+      square-root response. A Gaussian wing would give √(ln u). Only something close to
+      exponential gives a logarithm.</p>
+
+    <p><strong>Which leads to a result worth stating plainly: correcting the wings made the
+      model less logarithmic, not more.</strong> Drift of the fitted coefficient across the
+      sweep went from 2–5 % to 8–10 %. That is not a regression — it follows directly from the
+      algebra above. The pure Lorentzian far wing, integrated to a wide cutoff, happens to
+      produce a very clean logarithm; suppressing it with a χ factor breaks that idealisation.
+      The model was more logarithmic when it was more wrong.</p>
+
+    <p>The grey configuration makes the contrast concrete. Given one opacity for the whole
+      spectrum, its forcing ratio against the accepted law grows from 1.17 to 2.14 across the
+      same concentration span, because its absorber is simply diluted rather than
+      spectrally resolved. There is no band core to saturate, so there is no logarithm to
+      recover.</p>
   </section>
 
   <section>
-    <h2>What it is not</h2>
-    <ul class="plain">
-      <li><strong>No clouds and no scattering.</strong> Clear-sky longwave only; the
-        Schwarzschild equation solved has absorption and emission terms and nothing else.</li>
-      <li><strong>One angle.</strong> The exact hemispheric integral
-        <span class="num">2π∫I(z,μ)μ dμ</span> is collapsed onto a single diffusivity, and
-        <span class="num">2E₃(τ)</span> appears only in the tests, never in the solver.
-        D&nbsp;=&nbsp;2 is exact in the optically <em>thin</em> limit, which makes it the worst
-        choice for opaque band centres — no single value can serve bands spanning τ ≪ 1 to
-        τ ≫ 1.</li>
-      <li><strong>Line strengths are not temperature-scaled.</strong> Half-widths are —
-        HITRAN&rsquo;s <span class="num">n_air</span> is applied — but intensities are used at
-        their 296&nbsp;K values, since scaling them needs total internal partition sums. Voigt
-        profiles, line mixing and sub-Lorentzian far wings are absent.</li>
-      <li><strong>Shortwave is not radiative transfer.</strong> A prescribed fraction split by
-        air mass and a Chapman profile, with no zenith angle and no diurnal cycle.</li>
-      <li><strong>No prognostic humidity.</strong> Water vapour enters as an absorber scaled by
-        Clausius–Clapeyron at fixed relative humidity, so the convective adjustment conserves
-        dry enthalpy rather than moist static energy.</li>
-      <li><strong>One column.</strong> No horizontal transport, no ice–albedo feedback, and the
-        absorber amounts are illustrative rather than fitted to observations. Read the CO₂
-        results as spectroscopy, not as a prediction.</li>
-    </ul>
+    <h2>Water vapour, and its feedback</h2>
+    <p>Water vapour is the largest greenhouse gas in the column and the only absorber whose
+      amount follows the temperature. Its loading is scaled by Clausius–Clapeyron integrated
+      at constant latent heat,</p>
+
+    <div class="eq">
+      <span class="expr">e<sub>sat</sub>(T) = e₀ exp[(L/R<sub>v</sub>)(1/T₀ − 1/T)]</span>
+      <span class="gloss">evaluated at the near-surface air temperature</span>
+    </div>
+
+    <p>and distributed with its own scale height rather than following air density. Because it
+      is re-evaluated before every radiation solve, a warming column becomes more opaque as it
+      warms, which is the water-vapour feedback.</p>
+
+    <p>The feedback can be switched off, and the comparison is instructive — but only if it is
+      set up carefully. Freezing the vapour at its nominal loading gives a <em>different base
+      state</em>, so the two runs would start 2 K apart and the comparison would measure that
+      offset. The no-feedback configuration is therefore frozen at the feedback run's own base
+      air temperature, so both begin at exactly 286.796 K.</p>
+
+    <p>Set up that way, the two produce <strong>identical forcings</strong> — to four decimal
+      places — and different warmings. That identity is not a coincidence: instantaneous
+      forcing is defined at held temperatures, so a feedback cannot act on it. It is the
+      cleanest demonstration in the model that a feedback changes the response and not the
+      forcing.</p>
+
+    <p class="caveat">The feedback is a demonstration of mechanism, not a quantitative
+      estimate. It scales the whole vapour column by one Clausius–Clapeyron factor taken at
+      the surface, with a fixed exponential shape, so it cannot represent upper-tropospheric
+      humidity — which is where the outgoing longwave is actually set. And the prescribed
+      lapse rate means nothing can offset it, where a real lapse-rate feedback would cancel
+      perhaps a third of it.</p>
+  </section>
+
+  <section class="key">
+    <h2>Clouds</h2>
+    <p>Clouds do two opposite things, and the model does both. They are off by default.</p>
+
+    <p><strong>In the shortwave they reflect.</strong> The albedo splits into a clear part and
+      a cloudy part, mixed by cloud fraction:</p>
+
+    <div class="eq">
+      <span class="expr">A = (1−f) A<sub>clear</sub> + f A<sub>cloud</sub></span>
+      <span class="gloss">0.155 and 0.361 over 67 % of the sky returns Earth's 0.293</span>
+    </div>
+
+    <p>That split is what stops the clouds being counted twice. Earth's 0.30 planetary albedo
+      <em>already contains</em> them; a reflective deck added on top of it would reflect the
+      same sunlight again.</p>
+
+    <p><strong>In the longwave they trap.</strong> The deck is specified by the emissivity it
+      should have as a whole, inverted to an optical thickness τ = −ln(1−ε) and spread over
+      the segments by their <em>overlap</em> with the cloud rather than their full thickness —
+      so a 1.0–4.5 km deck keeps the same emissivity however the column is divided up. Its
+      opacity is grey, and is added outside the k-distribution: droplets absorb across a band
+      where gas absorbs in lines. Folding it inside would have made the cloud thin wherever
+      the gas is transparent, which is the exact opposite of what a cloud does, since its
+      longwave work happens mostly in the window.</p>
+
+    <p><strong>Two skies, one atmosphere.</strong> The longwave is solved twice, with and
+      without the deck, and the fluxes mixed by cloud fraction — the independent column
+      approximation. The mixing is exact, since fluxes add. What is approximate is the
+      premise: that the cloudy and clear parts of the sky exchange no radiation sideways. Both
+      solves see the same temperatures, because there is one atmosphere and one surface under
+      both skies.</p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>Cloud radiative effect, W m⁻², against the CERES satellite record</caption>
+        <thead><tr><th></th><th class="n">model</th><th class="n">CERES</th></tr></thead>
+        <tbody>
+          <tr><td>Shortwave — reflected away</td><td class="n">−46.96</td><td class="n">−47.1</td></tr>
+          <tr><td>Longwave — trapped</td><td class="n">+26.55</td><td class="n">+26.2</td></tr>
+          <tr><td><strong>Net</strong></td><td class="n"><strong>−20.41</strong></td><td class="n"><strong>−20.9</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Only the longwave figure is a result; the shortwave one is arithmetic on the two
+      albedos, and those were chosen to reproduce Earth's. Both are measured as CERES measures
+      them — this planet against the same planet with the cloud removed and nothing else
+      touched.</p>
+
+    <p><strong>The calibration is separate, and finding out why was the interesting part.</strong>
+      Switching clouds on over the shipped configuration warms the surface by about 13 K.
+      Nothing is broken: that configuration's absorbers were scaled to reach an Earth-like
+      temperature at an 0.30 albedo with <em>no cloud</em> — a planet carrying the clouds'
+      reflection while having none of their greenhouse. The gas had been standing in for the
+      cloud greenhouse all along, so adding a real deck supplies it twice. The cloudy
+      configuration therefore halves the gas loading and hands the difference to the deck,
+      arriving at the same surface by a different route.</p>
+
+    <p>A second result fell out of that. Running the four corners — each effect on and off —
+      the two nearly cancel in temperature while emphatically not cancelling in flux:
+      reflection cools by 12.45 K, trapping warms by 11.75 K, and the net is
+      <strong>−0.99 K</strong> against a net flux effect of −20.41 W m⁻². A single sensitivity
+      applied to that flux would have predicted twelve. The components have different
+      efficacies here — 0.27 against 0.44 K per W m⁻² — which is a property of this model's
+      fixed lapse rate and prescribed deck rather than a claim about Earth. It does illustrate
+      why cloud feedback is the largest remaining uncertainty in real climate sensitivity: a
+      net number that small is a difference between two much larger ones.</p>
+  </section>
+
+  <section>
+    <h2>Convection and the surface</h2>
+    <p>Radiative equilibrium alone gives a surface far hotter than observed and a lapse rate
+      steeper than the atmosphere can sustain. Three non-radiative terms fix that.</p>
+
+    <p><strong>A critical-lapse-rate adjustment.</strong> Wherever the lapse rate exceeds
+      6.5 K km⁻¹ the affected block is mixed back onto exactly that rate, conserving
+      Σ C<sub>i</sub>T<sub>i</sub>. This is not a diffusion — it is an instantaneous
+      restoration of the profile a convecting atmosphere would hold, and it is applied after
+      every timestep.</p>
+
+    <p><strong>A surface sensible heat flux</strong>, Q = h<sub>c</sub>(T<sub>s</sub> −
+      T<sub>air</sub>), with h<sub>c</sub> = 5.8 + 4.1v. The air temperature is extrapolated
+      to z = 0 from the two lowest segments rather than taken from the lowest one, which
+      matters more than it sounds: using the lowest segment evaluates the air at
+      <em>dz</em>/2 and makes the whole model first order in <em>dz</em>. The radiative
+      recurrence is already exact for constant-temperature segments, so this extrapolation is
+      what restores second-order convergence.</p>
+
+    <p><strong>An optional latent heat flux</strong> — evaporation — through the bulk
+      aerodynamic form, off by default. Its moisture-availability parameter β scales the
+      <em>whole flux</em>, not the surface humidity; scaling the humidity instead makes β &lt; 1
+      drive perpetual dew deposition and <em>warm</em> the surface, which is the opposite of
+      what suppressing evaporation should do.</p>
+
+    <p>The surface is deliberately excluded from the lapse-rate adjustment. It exchanges heat
+      with the air through the flux above and through radiation, and folding it into the
+      convective mixing would let it equilibrate with the air instantly, removing the
+      temperature difference that drives the flux in the first place.</p>
+  </section>
+
+  <section>
+    <h2>Geometry, optionally</h2>
+    <p>Three corrections take the column from a plane-parallel idealisation toward a real
+      planet. Each is switchable, and their sizes are worth knowing because two of them nearly
+      cancel.</p>
+
+    <p><strong>Sphericity.</strong> A shell at radius <em>r</em> has (r/r₀)² times the area of
+      the surface beneath it. Writing G = (r/r₀)²F — the power crossing radius <em>r</em>,
+      divided by the area beneath it — removes the geometric term from the spherical
+      two-stream equations entirely, leaving the plane-parallel equation with its source
+      scaled by (r/r₀)². So sphericity enters the solver in exactly one line, the recurrence
+      stays exact, and every budget still closes in W per m² of surface. Effect: −0.016 K.</p>
+
+    <p><strong>Gravity falling with height.</strong> g(z) = g₀(r₀/(r₀+z))², about 1.5 % weaker
+      at 50 km, which changes the mass supporting each pressure drop. Effect: +0.012 K.</p>
+
+    <p><strong>The top-of-atmosphere solar cross-section.</strong> The planet intercepts
+      sunlight on a disc of radius r₀ + z<sub>top</sub>, not r₀, and rays near the limb pass
+      through a long slant path without ever reaching the ground. Effect: +0.309 K — an order
+      of magnitude larger than the other two, and the only one that materially matters.</p>
+  </section>
+
+  <section>
+    <h2>Solving it</h2>
+    <p>The column is marched to equilibrium with an adaptive explicit forward-Euler step on
+      each segment's heat capacity. The step is limited by two constraints: no level may move
+      more than a fixed amount in one step, and the step must stay inside the explicit
+      stability limit set by the local radiative relaxation time C/λ, where λ is the
+      derivative of net loss with respect to temperature.</p>
+
+    <p>That second constraint is what makes the problem stiff. The thin upper segments have
+      small heat capacities and short relaxation times, so they set a step much shorter than
+      the lower column needs, and a single march takes some 44,000 steps. It is the dominant
+      cost of the model.</p>
+
+    <p>Convergence is measured across the <em>complete</em> step, adjustment included. Inside
+      a convecting block an individual segment's radiative tendency does not vanish at
+      equilibrium — it is balanced by the convective adjustment — so the tendency alone is not
+      a convergence measure.</p>
+
+    <p>A concentration sweep runs twenty of these marches. Every concentration above the
+      reference is independent of the others — each builds its own column and measures its
+      forcing against the one shared reference state — so they run concurrently, and the
+      sweep the charts need went from 217 seconds to 59 on a 32-core machine. That is a
+      scheduling change and not a numerical one, and the full-precision output confirms it:
+      every value identical to the digit.</p>
+  </section>
+
+  <section class="key">
+    <h2>What is calibrated, and what is predicted</h2>
+    <p>This is the section that decides how much weight anything else can carry.</p>
+
+    <p><strong>Calibrated.</strong> The absorber amounts are scaled by one common factor
+      chosen to put the base state at an Earth-like surface temperature. The continuum that
+      closes the atmospheric window is one tuned number rather than fitted MT_CKD
+      coefficients. The cloud albedos and fraction are chosen to reproduce Earth's clear-sky
+      and all-sky albedos. The cloud deck's height was chosen by requiring the longwave cloud
+      effect to match observation. In the grey configurations, the CO<sub>2</sub> share of the
+      absorber is tuned against a known forcing.</p>
+
+    <p><strong>Predicted.</strong> Which bands exist, how opaque each is relative to the
+      others, and how absorption is distributed within each — all of that comes from the line
+      data. So does the <em>shape</em> of the CO<sub>2</sub> response: the logarithm is not
+      imposed anywhere, and the absorber amount is exactly linear in concentration, so the
+      curvature is produced entirely by band structure. The forcing coefficient that comes out
+      of it is a measurement, reported as it falls.</p>
+
+    <p>The distinction matters most for the headline comparison. Because the CO<sub>2</sub>
+      forcing is measured in W m⁻² and compared against a law also expressed in W m⁻²,
+      <strong>nothing is converted and no sensitivity is borrowed</strong>. Turning the
+      accepted law into a temperature would need the model's own sensitivity, which would make
+      the reference partly a restatement of the thing it is meant to test — which is why the
+      temperature views carry no reference curve at all.</p>
+  </section>
+
+  <section class="key">
+    <h2>Results</h2>
+    <div class="tablewrap">
+      <table>
+        <caption>Spectral configuration, 16 bands × 16 g-points, 400 cm⁻¹ wing cutoff, χ-corrected</caption>
+        <thead>
+          <tr><th></th><th class="n">clear sky</th><th class="n">67 % cloud</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Absorber scale</td><td class="n">15.869</td><td class="n">5.142</td></tr>
+          <tr><td>Base surface temperature</td><td class="n">286.796 K</td><td class="n">286.796 K</td></tr>
+          <tr><td>Forcing at 580 ppm</td><td class="n">3.719 W m⁻²</td><td class="n">3.336 W m⁻²</td></tr>
+          <tr><td>Forcing at 1000 ppm</td><td class="n">6.238 W m⁻²</td><td class="n">5.854 W m⁻²</td></tr>
+          <tr><td>Fitted coefficient A</td><td class="n">4.839</td><td class="n">4.676</td></tr>
+          <tr><td>Against accepted 5.35</td><td class="n">0.904×</td><td class="n">0.874×</td></tr>
+          <tr><td>Drift across the sweep</td><td class="n">10.1 %</td><td class="n">1.1 %</td></tr>
+          <tr><td>Warming to 1000 ppm</td><td class="n">+4.35 K</td><td class="n">+3.45 K</td></tr>
+          <tr><td>— with vapour held fixed</td><td class="n">+2.33 K</td><td class="n">+2.54 K</td></tr>
+          <tr><td>Sensitivity</td><td class="n">0.708 K/W m⁻²</td><td class="n">0.592 K/W m⁻²</td></tr>
+          <tr><td>Convective top, 285 → 1000 ppm</td><td class="n">4.17 → 5.83 km</td><td class="n">5.83 → 5.83 km</td></tr>
+          <tr><td>Emission-temperature level</td><td class="n">4.53 → 5.17 km</td><td class="n">4.24 → 4.76 km</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The vertical numbers are the mechanism made visible. Adding CO<sub>2</sub> lifts the
+      height at which the column reaches the planet's emission temperature, and the surface is
+      warmer than that level by the lapse rate times its height. That is the greenhouse
+      argument, measured rather than asserted.</p>
+
+    <p>A cloud deck masks about 6 % of the CO<sub>2</sub> forcing — it already blocks part of
+      the upward flux the extra gas would have intercepted. The clouded response is also far
+      closer to a pure logarithm, but holding the base state fixed required dropping the gas
+      loading threefold, so cloud and loading moved together and that one is suggestive rather
+      than established.</p>
   </section>
 
   <section>
     <h2>How it is checked</h2>
-    <p>323 tests. The ones that carry weight are not the unit tests but the independent
-      references: closed-form analytic solutions the model must reproduce (grey radiative
-      equilibrium, the <span class="num">(N+1)<sup>1/4</sup></span> opaque-slab stack), a
-      line-by-line spectrum the band approximations are measured against, exact numerical
-      integrals for the exponential integral and the Planck fraction, and — for the spherical
-      solver — a fourth-order Runge–Kutta integration of the <em>original</em> spherical
-      equation, sharing nothing with the solver but its inputs.</p>
-    <p>Several are mutation-checked: inverting the sign of the shell-area factor fails five
-      tests, and pairing the geopotential grid with a constant gravity fails three. Energy
-      closure is asserted everywhere — what the surface and every segment absorb must sum to
-      what the planet is said to absorb.</p>
-    <p>HITRAN data is not committed, so the suite builds and runs offline with no network and
-      no external files; the tests that need real lines report themselves as not-run rather
-      than failing.</p>
+    <p>381 tests, and the ones worth naming are those that check the model against something
+      outside itself.</p>
+
+    <ul class="plain">
+      <li><strong>Against a resolved spectrum.</strong> The correlated-k reduction is checked
+        against direct line-by-line integration of the same spectrum, so the quadrature is
+        verified rather than assumed.</li>
+      <li><strong>Against analytic limits.</strong> The exponential recurrence is checked to
+        reduce to the Koenigsberger form as <em>dz</em> → 0; area under a broadened line is
+        conserved; a spherical shell's emission is checked against an independent RK4
+        integration of the spherical two-stream equations.</li>
+      <li><strong>Against observation.</strong> The cloud radiative effect against CERES; the
+        Bowen ratio against Earth's global mean when evaporation is enabled.</li>
+      <li><strong>Convergence rather than agreement.</strong> Grid, band count, g-points and
+        wing cutoff are each refined and the answer's movement recorded. This is what
+        identified the far wings as the dominant error, and what exposed an earlier
+        configuration that had got the right coefficient by two errors cancelling.</li>
+      <li><strong>Invariants that catch structural mistakes.</strong> Forcing is zero at the
+        reference concentration by construction, at every cloud fraction — an assertion that
+        cost nothing and later caught a real bug, where an all-sky baseline was being
+        differenced against a fully cloudy perturbed state.</li>
+    </ul>
+
+    <p>Continuous integration builds on Windows and on Linux, the latter restoring with no
+      package source at all, so a dependency that quietly crept in would fail the build rather
+      than the user.</p>
   </section>
 
+  <section>
+    <h2>What it is not</h2>
+    <p>One column, globally averaged, with no horizontal transport, no diurnal or seasonal
+      cycle, and no dynamics. It cannot produce a circulation, a latitude gradient, or
+      anything that depends on one.</p>
+
+    <ul class="plain">
+      <li><strong>The absorber amounts are illustrative.</strong> They are scaled to reach an
+        Earth-like surface, not taken from observed concentrations, so the CO<sub>2</sub>
+        column is not Earth's. The band is more saturated than the real one, and what that
+        does to the forcing coefficient has not been isolated — it is a genuine unknown inside
+        the quoted 0.90×.</li>
+      <li><strong>Line strengths are not temperature-scaled.</strong> Half-widths are, through
+        HITRAN's n<sub>air</sub>, but intensities are used at their 296 K values because
+        scaling them needs total internal partition sums. Line mixing, Voigt profiles, self
+        broadening and pressure shift are all absent.</li>
+      <li><strong>The instantaneous forcing is not the adjusted forcing.</strong> The accepted
+        5.35 ln(C/C₀) is a stratosphere-adjusted value at the tropopause; this is an
+        instantaneous one at the top of the atmosphere. They are different quantities, and the
+        comparison should be read with that in mind.</li>
+      <li><strong>One grey cloud deck</strong> at one height stands in for everything from fog
+        to cirrus, and is prescribed rather than predicted — so it cannot act as a feedback,
+        which is the single largest uncertainty in real sensitivity estimates.</li>
+      <li><strong>The shortwave is a deposition profile, not a transfer calculation.</strong>
+        There is no scattering anywhere in the model; cloud and surface reflection are
+        albedos.</li>
+      <li><strong>No feedbacks except water vapour.</strong> No ice–albedo, and no lapse-rate
+        feedback beyond what the fixed critical lapse rate already imposes.</li>
+    </ul>
+
+    <p>What it is for is showing that the qualitative behaviour of a radiative–convective
+      atmosphere — a convecting troposphere under a radiative stratosphere, a greenhouse
+      effect that scales with the height of the emission level, and a logarithmic response to
+      CO<sub>2</sub> — follows from a small number of physical statements applied carefully,
+      and can be traced from HITRAN line data to a surface temperature without any step being
+      taken on trust.</p>
+  </section>
   <footer>
-    <p>13,507 lines of C# in 53 files — 4,863 of physics in
-      <code>ClimateColumn.Core</code>, 42&nbsp;% of it comment, and 7,240 lines of tests.
-      .NET 8, no runtime dependencies beyond the framework; the WinForms chart adds
-      Windows-only presentation. Numbers throughout are the model&rsquo;s current output, not
-      illustrations.</p>
+    <p>17,198 lines of C# in 63 files — 5,788 of physics in
+      <code>ClimateColumn.Core</code>, 39&nbsp;% of it comment, and 8,521 lines of tests.
+      381 tests pass. Longwave opacity is derived from HITRAN line data, which is not
+      redistributed with the source.</p>
   </footer>
 
 </div>
+<style>
+  /* Supplement: the second line inside a result tile, and numbered steps. */
+  .result dd.note {
+    font-size: .74rem; font-weight: 400; color: var(--ink-3);
+    font-family: var(--sans); letter-spacing: 0; margin-top: .15rem;
+  }
+  ol.plain { list-style: none; padding: 0; margin: 1.1rem 0; counter-reset: step; }
+  ol.plain > li {
+    counter-increment: step; position: relative; padding-left: 1.9rem;
+    margin-bottom: .7rem; max-width: 44rem;
+  }
+  ol.plain > li::before {
+    content: counter(step); position: absolute; left: 0; top: .05em;
+    font-family: var(--mono); font-size: .74rem; color: var(--warm);
+    border: 1px solid var(--rule); border-radius: 50%;
+    width: 1.35rem; height: 1.35rem; display: grid; place-items: center;
+  }
+</style>
 <style>
   /* ---- Print. Paper is always light: the dark palette is a screen affordance, and
          printing it would waste toner and read badly. Forcing the light tokens is
