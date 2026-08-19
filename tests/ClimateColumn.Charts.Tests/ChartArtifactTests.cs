@@ -115,10 +115,18 @@ public class ChartArtifactTests
                     $"{sweep.Label}: {point.Ppm:F0} ppm must be an equilibrium");
             }
 
-            // The chart's headline claim: the model overshoots the logarithmic expectation.
-            Assert.IsTrue(sweep.Overshoot(last) > 1.0,
-                $"{sweep.Label}: the overshoot the chart shows should be real " +
-                $"({sweep.Overshoot(last):F3} K)");
+            // The chart's headline claim, and it is not the one it used to be. This asserted
+            // that the model overshoots the logarithmic expectation by more than a kelvin,
+            // which it did while the far wings were pure Lorentzian and the forcing ran 1.33x
+            // the accepted law. With the sub-Lorentzian correction the model tracks that law
+            // closely and finishes slightly under it, so the assertion now pins the agreement
+            // rather than the departure - and stays two-sided, because a model that drifted far
+            // either way would be worth knowing about.
+            Assert.IsTrue(Math.Abs(sweep.Overshoot(last)) < 1.5,
+                $"{sweep.Label}: the model should track the logarithmic expectation to about a " +
+                $"kelvin across the sweep (off by {sweep.Overshoot(last):F3} K at " +
+                $"{Co2Sweep.Concentrations[last]:F0} ppm)");
+
             Assert.IsTrue(sweep.Warming(last) > 0,
                 $"{sweep.Label}: warming should be positive ({sweep.Warming(last):F3} K)");
         }

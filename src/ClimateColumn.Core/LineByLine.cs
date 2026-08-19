@@ -123,9 +123,14 @@ public sealed class LineByLineBand
     /// wings is what every line-by-line code does; 25 cm^-1 is the usual choice. Infinity keeps
     /// every line everywhere, which is what the synthetic band uses.
     /// </param>
+    /// <param name="chi">
+    /// Optional sub-Lorentzian correction to the far wings. Null keeps the pure Lorentz
+    /// profile. See <see cref="ChiFactor"/> - it is molecule specific, so it is supplied per
+    /// band rather than being a property of the line shape everywhere.
+    /// </param>
     public static LineByLineBand FromLines(
         IReadOnlyList<SpectralLine> lines, double start, double end, int samples,
-        double wingCutoff = double.PositiveInfinity)
+        double wingCutoff = double.PositiveInfinity, ChiFactor? chi = null)
     {
         if (end <= start) throw new ArgumentException("end must exceed start.");
         if (samples < 2) throw new ArgumentException("samples must be >= 2.");
@@ -136,11 +141,17 @@ public sealed class LineByLineBand
         double step = (end - start) / samples;
         for (int i = 0; i < samples; i++) grid[i] = start + (i + 0.5) * step;
 
-        return new LineByLineBand(grid, lines.ToArray(), start, end) { WingCutoff = wingCutoff };
+        return new LineByLineBand(grid, lines.ToArray(), start, end)
+            { WingCutoff = wingCutoff, Chi = chi };
     }
 
     /// <summary>How far from its centre a line is evaluated, cm^-1.</summary>
     public double WingCutoff { get; private init; } = double.PositiveInfinity;
+
+    /// <summary>
+    /// Sub-Lorentzian far-wing correction, or null for the pure Lorentz profile.
+    /// </summary>
+    public ChiFactor? Chi { get; private init; }
 
     /// <summary>HITRAN's reference temperature for half-widths and intensities, K.</summary>
     public const double ReferenceTemperature = 296.0;
@@ -221,10 +232,24 @@ public sealed class LineByLineBand
                 if (to > k.Length - 1) to = k.Length - 1;
             }
 
-            for (int i = from; i <= to; i++)
+            // The sub-Lorentzian correction multiplies the profile, so it costs one exponential
+            // per sample per line inside the cutoff - which is why it is skipped entirely when
+            // no chi factor is supplied rather than multiplying by a constant one.
+            if (Chi is null)
             {
-                double offset = _wavenumbers[i] - line.Wavenumber;
-                k[i] += amplitude / (offset * offset + gammaSquared);
+                for (int i = from; i <= to; i++)
+                {
+                    double offset = _wavenumbers[i] - line.Wavenumber;
+                    k[i] += amplitude / (offset * offset + gammaSquared);
+                }
+            }
+            else
+            {
+                for (int i = from; i <= to; i++)
+                {
+                    double offset = _wavenumbers[i] - line.Wavenumber;
+                    k[i] += Chi.At(offset) * amplitude / (offset * offset + gammaSquared);
+                }
             }
         }
 

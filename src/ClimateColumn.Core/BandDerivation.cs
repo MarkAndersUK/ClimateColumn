@@ -146,12 +146,18 @@ public static class BandDerivation
     /// True for CO2, so that the bands it dominates respond to concentration and the others do not.
     /// </param>
     /// <param name="Label">A name, for reporting.</param>
+    /// <param name="Chi">
+    /// Optional sub-Lorentzian far-wing correction for this gas. Null keeps the pure Lorentz
+    /// profile. Carried per molecule because a chi factor is fitted to one band of one gas -
+    /// applying CO2's to water vapour would be inventing spectroscopy rather than correcting it.
+    /// </param>
     public readonly record struct Molecule(
         IReadOnlyList<SpectralLine> Lines,
         AbsorberKind Kind,
         double OpticalDepth,
         bool RespondsToCo2,
-        string Label);
+        string Label,
+        ChiFactor? Chi = null);
 
     /// <summary>
     /// Derives one band set covering several molecules at once, on a shared wavenumber grid.
@@ -214,7 +220,7 @@ public static class BandDerivation
         foreach (var molecule in molecules)
         {
             var band = LineByLineBand.FromLines(
-                molecule.Lines, fromWavenumber, toWavenumber, samples, wingCutoff);
+                molecule.Lines, fromWavenumber, toWavenumber, samples, wingCutoff, molecule.Chi);
             reference ??= band;
 
             // AbsorptionCoefficients normalises to a mean of one over the whole range, so scaling

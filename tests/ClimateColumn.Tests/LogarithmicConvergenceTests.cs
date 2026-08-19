@@ -144,17 +144,28 @@ public class LogarithmicConvergenceTests
     /// response is logarithmic to a few percent.
     /// </summary>
     /// <remarks>
-    /// The convergence study behind this is recorded in artifacts/convergence-*.txt. Its result,
-    /// briefly: refining the wing cutoff to 800 cm^-1 at 16 bands x 16 g-points gives
-    /// A = 6.978 W m^-2 per ln, and 16 x 32 at a 400 cm^-1 cutoff gives 6.906. So the converged
-    /// coefficient is about 7.0, or 1.30x the accepted 5.35, and the shipped 8 x 4 configuration's
-    /// 6.994 is right - but by cancellation rather than by resolution. Its 15 cm^-1 wing cutoff
-    /// throws away far-wing absorption, and its coarse band split happens to compensate.
+    /// These numbers moved when the sub-Lorentzian chi factor went in, and the move is the whole
+    /// point of that change. With pure Lorentz wings the converged coefficient was about 6.95,
+    /// or 1.30x the accepted 5.35 - the model over-forced by a third. Correcting the far wings
+    /// takes the shipped configuration to A = 4.84 and the widest cutoff to 5.06, so 0.90 to 0.95
+    /// times accepted. The far-wing shape really was the dominant error, as the cutoff sensitivity
+    /// had suggested it must be.
     ///
-    /// That matters for what may be changed safely. Widening the cutoff alone takes the shipped
-    /// configuration to A = 9.5, badly wrong, because it removes one half of a cancelling pair.
-    /// Both knobs have to move together, which is why this asserts against the converged value
-    /// rather than against the shipped one.
+    /// <strong>The response is now less purely logarithmic, not more.</strong> Drift across the
+    /// sweep runs 8-10% where it used to run 2-5%. That is not a regression - it follows from
+    /// where the logarithm comes from. A pure exponential far wing gives an absorbing width
+    /// W = 2a ln(k0 u) and hence exactly F proportional to ln(u); the Lorentzian wing is the
+    /// idealisation that produces a clean logarithm, and suppressing it with a chi factor breaks
+    /// that idealisation. The model was more logarithmic when it was more wrong.
+    ///
+    /// What the resolution knobs do is unchanged in character: the coefficient still depends on
+    /// how far the wings are integrated, because the absorber scale is calibrated at one cutoff
+    /// and moving the cutoff changes the band mean and so the loading as well as the shape. That
+    /// is why this asserts against a converged band rather than one resolution's value.
+    ///
+    /// The convergence study behind the older figures is in artifacts/convergence-*.txt and was
+    /// run before the chi factor; its cutoff series is what identified the far wings as the
+    /// suspect in the first place.
     /// </remarks>
     [TestMethod]
     public void TheShippedCoefficientAgreesWithTheConvergedOne()
@@ -164,14 +175,17 @@ public class LogarithmicConvergenceTests
         Console.WriteLine(string.Format(Inv,
             "  drift {0:P3}  A = {1:F4} W/m2 per ln  R2 = {2:F7}", drift, coefficient, rSquared));
 
-        // The converged coefficient, measured at 16x16 with an 800 cm^-1 cutoff and at 16x32 with
-        // 400. Both land near 6.95; the shipped configuration must not stray far from that.
-        Assert.AreEqual(6.97, coefficient, 0.35,
-            $"the shipped coefficient is {coefficient:F3} W/m2 per ln against a converged ~6.95");
+        // Measured across resolutions with the chi factor in place: 4.84 shipped, 5.06 at an
+        // 800 cm^-1 cutoff, 4.87 at 32 bands and 4.87 at 32 g-points. The band is 4.84-5.06, so
+        // this brackets it with room for the calibration to shift slightly.
+        Assert.AreEqual(4.95, coefficient, 0.35,
+            $"the shipped coefficient is {coefficient:F3} W/m2 per ln against a converged 4.84-5.06 " +
+            $"({coefficient / Co2Sweep.AcceptedForcingCoefficient:F3}x the accepted 5.35)");
 
-        Assert.IsTrue(drift < 0.06,
-            $"the fitted coefficient wanders {drift:P2} across the sweep; converged resolutions " +
-            "sit between 2% and 5%, so anything above 6% means something else has changed");
+        Assert.IsTrue(drift < 0.12,
+            $"the fitted coefficient wanders {drift:P2} across the sweep; with the chi factor " +
+            "converged resolutions sit between 8% and 10%, so anything above 12% means something " +
+            "else has changed");
 
         Assert.IsTrue(rSquared > 0.999,
             $"R^2 against a pure logarithm is only {rSquared:F7}");

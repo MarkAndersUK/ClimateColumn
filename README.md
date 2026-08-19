@@ -992,48 +992,109 @@ there by definition, not by calibration.
 
 | relative to 285 ppm | model forcing | accepted | ratio |
 |---|---|---|---|
-| 350 ppm | 1.405 | 1.099 | 1.28 |
-| 500 ppm | 3.853 | 3.007 | 1.28 |
-| 700 ppm | 6.227 | 4.807 | 1.30 |
-| 1000 ppm | 8.909 | 6.716 | **1.33** |
+| 350 ppm | 1.136 | 1.099 | 1.03 |
+| 500 ppm | 2.990 | 3.007 | 0.99 |
+| 700 ppm | 4.613 | 4.807 | 0.96 |
+| 1000 ppm | 6.238 | 6.716 | **0.93** |
 
-**The shape is right; the scale is not.** Fitting $F = A\ln(C/C_0)$ gives $A$ between 6.84 and 7.10
-W m⁻² per ln — a **3.6 %** drift across a 3.5× concentration range, against the accepted 5.35. So
-the model's concentration *dependence* is logarithmic to a few percent, as a real gas is; what is
-wrong is a near-uniform scale factor of about 1.3. That is a far more tractable failure than the
-calibrated grey model's, whose ratio grew from 1.17 to 2.14 across the same span because its
-absorber was diluted rather than resolved.
+Fitting $F = A\ln(C/C_0)$ gives $A \approx 4.84$ W m⁻² per ln against the accepted 5.35, so the
+model now runs about **0.9×** the accepted law and crosses it near 500 ppm.
 
-The ratio now *rises* gently with concentration, 1.28 → 1.33. Under the previous under-resolved
-settings it fell, 1.35 → 1.32. The magnitude of the departure is much the same; its sign is not,
-which is a fair warning about how much weight the residual drift can carry.
+**It did not always.** Before the far wings were corrected, this table read 1.28 → 1.33 and the
+fitted coefficient was 6.9–7.1 — the model over-forced by a third, near-uniformly. The whole of
+that error turned out to be one piece of missing spectroscopy, described under
+[the sub-Lorentzian correction](#the-far-wings-and-the-sub-lorentzian-correction) below.
+
+**What the correction cost is the clean logarithm.** The drift of the fitted coefficient across
+the sweep went from 2–5 % to 8–10 %, and the ratio column above now slides 1.03 → 0.93 where it
+used to sit almost flat. That is not a regression, and it is worth being clear about why: a pure
+exponential far wing gives an absorbing width $W = 2a\ln(k_0u)$ and hence exactly $F \propto \ln u$.
+The Lorentzian wing is the idealisation that produces a clean logarithm. Suppressing it with a χ
+factor breaks that idealisation — **the model was more logarithmic when it was more wrong.**
+
+Either way this beats the calibrated grey model, whose ratio grew from 1.17 to 2.14 across the
+same span because its absorber was diluted rather than resolved.
 
 The absorber amount is *exactly* linear in concentration, so the logarithm is produced entirely by
 the band structure. That is the point of the exercise.
 
+#### The far wings and the sub-Lorentzian correction
+
+The Lorentz profile comes from the impact approximation: collisions instantaneous compared with
+the time between them. That holds near line centre and fails far from it — at a detuning of tens
+of cm⁻¹ the radiation is probing the collision itself, over times short enough that its finite
+duration matters. Real CO₂ wings therefore fall off **faster** than Lorentzian.
+
+That is not a detail here. This model's CO₂ forcing comes almost entirely from the far wings —
+the band core is saturated, so only the wings can still respond to more gas — which is *why* the
+response is logarithmic at all. The far-wing shape is the thing that sets the forcing
+coefficient.
+
+The correction is the three-segment exponential of Perrin & Hartmann (1989), multiplying the
+Lorentz profile:
+
+$$\chi(s) = \exp\!\left[-B_1(s-s_1) - B_2(s-s_2)^+ - B_3(s-s_3)^+\right],\quad s = |\nu-\nu_0|$$
+
+with breakpoints at 3, 30 and 120 cm⁻¹, continuous at each by construction, and applied to
+**CO₂ alone** — a χ factor is fitted to one band of one gas, so giving CO₂'s to water vapour
+would be inventing spectroscopy rather than correcting it.
+
+What it does, measured rather than assumed:
+
+| | absorber scale | base $T_s$ | $A$ | vs accepted |
+|---|---:|---:|---:|---:|
+| Pure Lorentz wings | 14.578 | 286.796 K | 6.988 | 1.31× |
+| χ factor, same loading | 14.578 | 285.109 K | 5.073 | 0.95× |
+| χ factor, recalibrated | 15.869 | 286.796 K | 5.091 | 0.95× |
+
+Two things are worth reading off that table. The correction removes essentially the entire
+over-forcing — 1.31× to 0.95×. And **recalibrating barely moved it**, 5.073 to 5.091, which is
+the reassurance that the coefficient is a property of the spectroscopy rather than of how much
+gas was put in.
+
+The loading did have to move: suppressing the wings removes absorption, so the base state cooled
+1.7 K and the absorber scale had to come back up from 14.578 to 15.869 to restore it. Changing
+the shape and the loading in one step would have confounded the two, which is why they are
+measured separately above.
+
+**A caveat that travels with these numbers.** The functional form is Perrin & Hartmann's; the
+coefficients are representative values for the CO₂ ν₂ band near 296 K and have *not* been checked
+against the original paper. Treat this as a correctly shaped correction rather than a faithful
+reproduction of a published fit — and note that the residual 0.9× is well inside the uncertainty
+those coefficients carry, alongside everything still missing (line mixing, temperature-scaled
+line intensities, and the fact that 5.35 is a stratosphere-adjusted tropopause forcing while this
+is an instantaneous one at the top of the atmosphere). The coefficients are constructor
+parameters so that anyone holding the paper can substitute the exact values and re-run the
+measurement.
+
+Nothing here was tuned to reach 5.35. The coefficient is reported as it came out, which is the
+only way the forcing stays a prediction rather than a calibration.
+
 #### Why these resolution settings, and not others
 
-Sixteen bands, sixteen g-points, a **400 cm⁻¹ wing cutoff** and an absorber scale of 14.578. Those
+Sixteen bands, sixteen g-points, a **400 cm⁻¹ wing cutoff** and an absorber scale of 15.869. Those
 are not arbitrary — they came out of a convergence study (`artifacts/convergence-study.txt`), and it
 found three things worth stating because none of them was expected.
 
 **The wing cutoff matters most**, which in hindsight follows from where the logarithm comes from.
 Truncating the wings discards exactly the far-wing absorption that makes the response logarithmic.
-Widening 15 → 400 cm⁻¹ converges $A$; 800 moves it a further 1 %.
+Widening 15 → 400 cm⁻¹ converges $A$; 800 moves it a further 4 %. That sensitivity is what
+identified the far wings as the suspect, and the χ factor above is what it led to.
 
 **The previous settings — 8 bands, 4 g-points, a 15 cm⁻¹ cutoff — got the right answer by error
-cancellation.** They reported $A = 6.99$ against a converged 6.9–7.1, but only because truncated
+cancellation.** They reported $A = 6.99$ against a then-converged 6.9–7.1 (both measured before the χ factor),
+but only because truncated
 wings and a coarse band split compensated. Widening the cutoff *alone* took that configuration to
 $A = 9.35$, badly wrong. Two errors had to move together, and that fragility — not the value — is
-why the settings changed. The published ratio barely moved: 1.32 → 1.33.
+why the settings changed.
 
 **The absorber scale is resolution dependent.** It exists to put the base state at an Earth-like
 surface, and the 13.0 that did so at the old resolution leaves the surface 2.4 K too cold here.
 `SpectralCalibrationTests` bisects it back to 286.796 K, so resolution and calibration are not
 allowed to change at the same time.
 
-The honest residue: the ~3.6 % drift does not fall further at any resolution tested, so it is a real
-departure rather than a numerical artefact.
+The honest residue: the drift - now 8-10 % with the χ factor, 2-5 % without it - does not fall
+further at any resolution tested, so it is a real departure rather than a numerical artefact.
 
 Read it as spectroscopy, not prediction. The absorber amounts are scaled to reach an Earth-like
 present-day surface rather than taken from observed concentrations, and the continuum that closes
@@ -1043,8 +1104,8 @@ each — and that structure is what makes the concentration dependence come out 
 
 The charts skip rather than fall back when the line lists are absent: a figure captioned as spectral
 must not quietly show something else. The sweep is nine equilibria at sixteen bands with sixteen
-g-points, about 150 seconds — by far the largest part of the suite's runtime, and the price of
-using a converged configuration rather than a lucky one.
+g-points. It used to take about 217 seconds; the concentrations are mutually independent, so they
+now run concurrently and it takes about 59.
 
 #### Plotting it
 
@@ -1066,13 +1127,13 @@ the accepted law, **warming ΔT** from the 285 ppm base case, and **absolute sur
 temperature**. ΔT is the same curve as the last of those with its base state subtracted off,
 and it is the more readable — absolute temperatures put the whole sweep in a 7 K band starting
 near 287 K, leaving the eye to do the subtraction the question was asking for anyway. On the ΔT
-view the water-vapour feedback is the whole picture: **+6.37 K against +3.35 K** at 1000 ppm,
+view the water-vapour feedback is the whole picture: **+4.35 K against +2.33 K** at 1000 ppm,
 both curves leaving zero together.
 
 Every view marks its value at 580 ppm directly on each curve, because the figure is also saved
 as a PNG for documents, where there is no pointer to hover with.
 
-The pairing is the point. The response chart says the surface warms by 6.37 K at 1000 ppm;
+The pairing is the point. The response chart says the surface warms by 4.35 K at 1000 ppm;
 only the profile says *where in the column* that came from — the convective top lifting from
 4.17 to 5.83 km, the height at which the column reaches the emission temperature rising from
 4.52 to 5.43 km, and the upper column cooling while the surface warms.

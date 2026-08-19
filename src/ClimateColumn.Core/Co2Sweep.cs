@@ -311,11 +311,13 @@ public sealed class Co2Sweep
     /// </remarks>
     public static Co2Sweep? SpectralBands(
         int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
-        bool rederive = false, double wingCutoff = 400.0, double absorberScale = 14.5781,
-        bool waterVapourFeedback = true, double? fixedVapourTemperature = null)
+        bool rederive = false, double wingCutoff = 400.0, double absorberScale = 15.8688,
+        bool waterVapourFeedback = true, double? fixedVapourTemperature = null,
+        bool subLorentzianWings = true)
     {
         var configure = SpectralConfiguration(bandCount, gPoints, segmentCount, samples, rederive,
-            wingCutoff, absorberScale, waterVapourFeedback, fixedVapourTemperature);
+            wingCutoff, absorberScale, waterVapourFeedback, fixedVapourTemperature,
+            subLorentzianWings);
         if (configure is null) return null;
 
         return Run(
@@ -338,8 +340,9 @@ public sealed class Co2Sweep
     /// </remarks>
     public static Func<double, ModelOptions>? SpectralConfiguration(
         int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
-        bool rederive = false, double wingCutoff = 400.0, double absorberScale = 14.5781,
-        bool waterVapourFeedback = true, double? fixedVapourTemperature = null)
+        bool rederive = false, double wingCutoff = 400.0, double absorberScale = 15.8688,
+        bool waterVapourFeedback = true, double? fixedVapourTemperature = null,
+        bool subLorentzianWings = true)
     {
         // Relative amounts per gas, then a common scale chosen for the base state.
         var recipe = new (string File, AbsorberKind Kind, double Share, bool Co2)[]
@@ -370,9 +373,12 @@ public sealed class Co2Sweep
         // Bands derived with CO2 present at the given multiple of its reference amount.
         IReadOnlyList<SpectralBand> Derive(double co2Ratio)
         {
+            // Only CO2 gets a chi factor, and only when asked for: it is fitted to the CO2 nu_2
+            // band, so giving it to water vapour or ozone would be inventing spectroscopy.
             var molecules = lines
                 .Select(m => new BandDerivation.Molecule(
-                    m.Lines, m.Kind, m.Co2 ? m.Amount * co2Ratio : m.Amount, m.Co2, m.File))
+                    m.Lines, m.Kind, m.Co2 ? m.Amount * co2Ratio : m.Amount, m.Co2, m.File,
+                    m.Co2 && subLorentzianWings ? ChiFactor.CarbonDioxideNu2 : null))
                 .ToList();
 
             return BandDerivation.DeriveShared(
