@@ -69,6 +69,7 @@ public static class Co2ChartPainter
         DrawAxisTitles(g, bounds, plot, quantity, titleFont, secondaryBrush);
         DrawLegend(g, bounds, sweeps, quantity, theme, labelFont, secondaryBrush);
         DrawSeries(g, sweeps, X, Y, quantity, theme);
+        DrawHighlightValues(g, plot, sweeps, X, Y, quantity, theme, boldFont, mutedBrush);
         DrawEndLabels(g, plot, sweeps, Y, quantity, theme, boldFont, tickFont, inkBrush, mutedBrush);
 
         if (hoverIndex is int idx && idx >= 0 && idx < ppm.Length)
@@ -185,7 +186,7 @@ public static class Co2ChartPainter
                     y += 16;
                 }
 
-                using var pen = new Pen(dashed ? theme.Axis : theme.Series[s % theme.Series.Length], 2f)
+                using var pen = new Pen(dashed ? theme.Reference : theme.Series[s % theme.Series.Length], 2f)
                 {
                     StartCap = LineCap.Round,
                     EndCap = LineCap.Round
@@ -220,7 +221,7 @@ public static class Co2ChartPainter
             // legend claims each configuration has its own accepted law.
             if (s == 0 && quantity.Reference is { } reference)
             {
-                DrawLine(g, sweep, i => reference(sweep, i), X, Y, theme.Axis, dashed: true);
+                DrawLine(g, sweep, i => reference(sweep, i), X, Y, theme.Reference, dashed: true);
             }
 
             if (duplicate) continue;
@@ -255,6 +256,67 @@ public static class Co2ChartPainter
         if (dashed) pen.DashPattern = new[] { 3.5f, 2.5f };
 
         g.DrawLines(pen, points);
+    }
+
+    /// <summary>
+    /// The value each drawn curve takes at the highlighted concentration, marked on the curve.
+    /// </summary>
+    /// <remarks>
+    /// The hover readout already gives this on screen. It is drawn permanently because the
+    /// figure is also saved as a PNG and embedded in documents, where there is no pointer to
+    /// hover with - and 580 ppm is on the figure precisely because it is the value worth
+    /// quoting, which a rule with no number on it does not do.
+    ///
+    /// Labels sit to the left of the rule, where the curves have not yet climbed, and are
+    /// pushed apart when two land close together.
+    /// </remarks>
+    private static void DrawHighlightValues(Graphics g, Rectangle plot,
+        IReadOnlyList<Co2Sweep> sweeps, Func<double, float> X, Func<double, float> Y,
+        Co2ChartQuantity quantity, ChartTheme theme, Font boldFont, Brush mutedBrush)
+    {
+        int idx = Co2Sweep.HighlightIndex;
+        if (idx < 0) return;
+
+        float hx = X(Co2Sweep.HighlightPpm);
+
+        var marks = new List<(float Y, string Text, Color Colour)>();
+        for (int s = 0; s < sweeps.Count; s++)
+        {
+            if (quantity.DuplicatesFirst(sweeps, s)) continue;
+            if (idx >= sweeps[s].Points.Count) continue;
+
+            double value = quantity.Model(sweeps[s], idx);
+            marks.Add((Y(value),
+                value.ToString(quantity.EndLabelFormat, Inv) + " " + quantity.Unit,
+                theme.Series[s % theme.Series.Length]));
+        }
+
+        if (marks.Count == 0) return;
+
+        marks.Sort((a, b) => a.Y.CompareTo(b.Y));
+
+        var placed = new float[marks.Count];
+        for (int i = 0; i < marks.Count; i++)
+        {
+            placed[i] = i == 0 ? marks[i].Y : Math.Max(marks[i].Y, placed[i - 1] + 15f);
+        }
+
+        using var right = new StringFormat { Alignment = StringAlignment.Far };
+        using var backing = new SolidBrush(Color.FromArgb(210, theme.Surface));
+
+        for (int i = 0; i < marks.Count; i++)
+        {
+            using var fill = new SolidBrush(marks[i].Colour);
+            using var ring = new Pen(theme.Surface, 2f);
+            g.FillEllipse(fill, hx - 4f, marks[i].Y - 4f, 8f, 8f);
+            g.DrawEllipse(ring, hx - 4f, marks[i].Y - 4f, 8f, 8f);
+
+            var size = g.MeasureString(marks[i].Text, boldFont);
+            var box = new RectangleF(hx - 96, placed[i] - 17, 88, 15);
+
+            g.FillRectangle(backing, box.Right - size.Width - 1, box.Y, size.Width + 2, box.Height);
+            g.DrawString(marks[i].Text, boldFont, mutedBrush, box, right);
+        }
     }
 
     /// <summary>
@@ -351,11 +413,17 @@ public static class Co2ChartPainter
 
             foreach (var (value, dashed, label) in HoverEntries(sweep, idx, quantity))
             {
-                rows.Add((label, colour, dashed,
+                // The accepted law is not this configuration's curve, so it must not wear this
+                // configuration's colour. It previously did in the readout only - putting a
+                // model-coloured dot on the grey reference line and a model-coloured key beside
+                // a row that names the law.
+                var entryColour = dashed ? theme.Reference : colour;
+
+                rows.Add((label, entryColour, dashed,
                     value.ToString(quantity.ValueFormat, Inv) + " " + quantity.Unit));
 
                 float y = Y(value);
-                using var fill = new SolidBrush(colour);
+                using var fill = new SolidBrush(entryColour);
                 using var ring = new Pen(theme.Surface, 2f);
                 g.FillEllipse(fill, px - 4.5f, y - 4.5f, 9f, 9f);
                 g.DrawEllipse(ring, px - 4.5f, y - 4.5f, 9f, 9f);
@@ -403,8 +471,11 @@ public static class Co2ChartPainter
         by = Math.Clamp(by, plot.Top + 4, Math.Max(plot.Top + 4, plot.Bottom - boxHeight - 4));
 
         var box = new RectangleF(bx, by, boxWidth, boxHeight);
-        using (var back = new SolidBrush(theme.Surface))
-        using (var edge = new Pen(theme.Axis, 1f))
+        // Plane, not Surface. The readout is a panel floating over the figure, and filling it
+        // with the same colour as the figure left only a 1.5:1 border to say where it started -
+        // so in dark mode its text read as loose on the chart rather than as sitting in a box.
+        using (var back = new SolidBrush(theme.Plane))
+        using (var edge = new Pen(theme.Reference, 1f))
         {
             g.FillRectangle(back, box);
             g.DrawRectangle(edge, box.X, box.Y, box.Width, box.Height);

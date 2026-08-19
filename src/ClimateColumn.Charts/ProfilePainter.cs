@@ -616,13 +616,22 @@ public static class ProfilePainter
         // Below the crosshair unless that would overflow, and pinned to the left of the plot
         // where the curves are coldest and the box is least likely to sit on one.
         float bx = Math.Min(plot.Left + 8, plot.Right - boxWidth - 4);
+
+        // The bottom fifth of a profile is where every other annotation lives - the convecting
+        // layer's caption, the cloud deck's, the emission-temperature crossings. Flip above the
+        // crosshair rather than only when the box would leave the plot, or a readout taken in
+        // the mid troposphere lands squarely on all of them.
+        float crowded = plot.Bottom - plot.Height * 0.20f;
         float by = py + 12;
-        if (by + boxHeight > plot.Bottom - 4) by = py - 12 - boxHeight;
+        if (by + boxHeight > crowded) by = py - 12 - boxHeight;
         by = Math.Clamp(by, plot.Top + 4, Math.Max(plot.Top + 4, plot.Bottom - boxHeight - 4));
 
         var box = new RectangleF(bx, by, boxWidth, boxHeight);
-        using (var back = new SolidBrush(theme.Surface))
-        using (var edge = new Pen(theme.Axis, 1f))
+        // Plane, not Surface. The readout is a panel floating over the figure, and filling it
+        // with the same colour as the figure left only a 1.5:1 border to say where it started -
+        // so in dark mode its text read as loose on the chart rather than as sitting in a box.
+        using (var back = new SolidBrush(theme.Plane))
+        using (var edge = new Pen(theme.Reference, 1f))
         {
             g.FillRectangle(back, box);
             g.DrawRectangle(edge, box.X, box.Y, box.Width, box.Height);

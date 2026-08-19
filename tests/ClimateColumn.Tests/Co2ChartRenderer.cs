@@ -138,7 +138,7 @@ internal static class Co2ChartRenderer
             if (s == 0 && quantity.Reference is { } reference)
             {
                 svg.AppendLine(Fmt(
-                    "  <path class=\"series-line\" d=\"{0}\" fill=\"none\" stroke=\"var(--axis)\" stroke-width=\"2\" " +
+                    "  <path class=\"series-line\" d=\"{0}\" fill=\"none\" stroke=\"var(--reference)\" stroke-width=\"2\" " +
                     "stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-dasharray=\"7 5\"/>",
                     Path(sweep, i => reference(sweep, i), X, Y)));
             }
@@ -346,7 +346,7 @@ internal static class Co2ChartRenderer
         {
             sb.AppendLine(Fmt(
                 "      <span class=\"legend-item\"><svg class=\"legend-key\" width=\"22\" height=\"10\" aria-hidden=\"true\">" +
-                "<line x1=\"1\" y1=\"5\" x2=\"21\" y2=\"5\" stroke=\"var(--axis)\" stroke-width=\"2\" " +
+                "<line x1=\"1\" y1=\"5\" x2=\"21\" y2=\"5\" stroke=\"var(--reference)\" stroke-width=\"2\" " +
                 "stroke-linecap=\"round\" stroke-dasharray=\"6 4\"/></svg><span>{0} (accepted law)</span></span>",
                 Escape(quantity.ReferenceLabel!)));
         }
@@ -668,8 +668,8 @@ internal static class Co2ChartRenderer
           :root {
             color-scheme: light;
             --surface: #fcfcfb; --plane: #f9f9f7;
-            --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
-            --grid: #e1e0d9; --axis: #c3c2b7;
+            --ink: #0b0b0b; --ink-2: #52514e; --muted: #747268;
+            --grid: #e1e0d9; --axis: #c3c2b7; --reference: #8f8d85;
             --hairline: rgba(11,11,11,0.10);
             --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
             --warn-wash: rgba(235,104,52,0.08); --warn-edge: rgba(235,104,52,0.32);
@@ -679,7 +679,7 @@ internal static class Co2ChartRenderer
               color-scheme: dark;
               --surface: #1a1a19; --plane: #0d0d0d;
               --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-              --grid: #2c2c2a; --axis: #383835;
+              --grid: #2c2c2a; --axis: #383835; --reference: #6e6d66;
               --hairline: rgba(255,255,255,0.10);
               --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
               --warn-wash: rgba(217,89,38,0.12); --warn-edge: rgba(217,89,38,0.40);
@@ -689,7 +689,7 @@ internal static class Co2ChartRenderer
             color-scheme: dark;
             --surface: #1a1a19; --plane: #0d0d0d;
             --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-            --grid: #2c2c2a; --axis: #383835;
+            --grid: #2c2c2a; --axis: #383835; --reference: #6e6d66;
             --hairline: rgba(255,255,255,0.10);
             --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
             --warn-wash: rgba(217,89,38,0.12); --warn-edge: rgba(217,89,38,0.40);

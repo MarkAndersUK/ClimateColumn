@@ -1061,6 +1061,17 @@ concentration the pointer is over. Clicking pins a concentration so the pointer 
 elsewhere; a values grid below tracks both, and there is a light/dark toggle and a Save PNG
 for each figure.
 
+The response chart plots three quantities, cycled by one button: **forcing** in W m⁻² against
+the accepted law, **warming ΔT** from the 285 ppm base case, and **absolute surface
+temperature**. ΔT is the same curve as the last of those with its base state subtracted off,
+and it is the more readable — absolute temperatures put the whole sweep in a 7 K band starting
+near 287 K, leaving the eye to do the subtraction the question was asking for anyway. On the ΔT
+view the water-vapour feedback is the whole picture: **+6.37 K against +3.35 K** at 1000 ppm,
+both curves leaving zero together.
+
+Every view marks its value at 580 ppm directly on each curve, because the figure is also saved
+as a PNG for documents, where there is no pointer to hover with.
+
 The pairing is the point. The response chart says the surface warms by 6.37 K at 1000 ppm;
 only the profile says *where in the column* that came from — the convective top lifting from
 4.17 to 5.83 km, the height at which the column reaches the emission temperature rising from
@@ -1080,6 +1091,8 @@ dotnet run --project src/ClimateColumn.Charts -- --png artifacts/co2-response.pn
 --png PATH          render the response chart to a PNG and exit, no window
 --profile-png PATH  render the vertical profile to a PNG and exit
 --profile-ppm N     which concentration the profile is drawn at    (580)
+--warming           plot ΔT from 285 ppm instead of forcing
+--temperature       plot absolute surface temperature instead of forcing
 --dark              use the dark palette for --png
 --width N           PNG width in pixels   (1100, 620 for the profile)
 --height N          PNG height in pixels  (700, 820 for the profile)

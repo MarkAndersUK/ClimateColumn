@@ -58,20 +58,18 @@ public sealed class MainForm : Form
 
         // Response chart left, profile right. The profile is portrait by nature and needs less
         // width, so it takes the smaller share and is the panel that gives way on a resize.
+        //
+        // The minimum sizes are deliberately NOT set here - see LayoutPanels.
         _figures.Dock = DockStyle.Fill;
         _figures.Orientation = Orientation.Vertical;
         _figures.Panel1.Controls.Add(_chart);
         _figures.Panel2.Controls.Add(_profile);
-        _figures.Panel1MinSize = 380;
-        _figures.Panel2MinSize = 320;
         _figures.FixedPanel = FixedPanel.Panel2;
 
         _outer.Dock = DockStyle.Fill;
         _outer.Orientation = Orientation.Horizontal;
         _outer.Panel1.Controls.Add(_figures);
         _outer.Panel2.Controls.Add(BuildGrid());
-        _outer.Panel1MinSize = 340;
-        _outer.Panel2MinSize = 90;
 
         _statusLabel.Text = "Running the column to equilibrium at each concentration…";
         _statusLabel.Spring = true;
@@ -87,21 +85,42 @@ public sealed class MainForm : Form
         _profile.HoverChanged += OnProfileHover;
 
         ApplyTheme();
-        Load += async (_, _) =>
-        {
-            LayoutPanels();
-            await RunSweepsAsync();
-        };
+
+        Shown += (_, _) => LayoutPanels();
+        Load += async (_, _) => await RunSweepsAsync();
+    }
+
+    /// <summary>Panel minimums and splitter positions, once the form has its real size.</summary>
+    private void LayoutPanels()
+    {
+        SetSplit(_outer, panel1Min: 340, panel2Min: 90, fraction: 0.70);
+        SetSplit(_figures, panel1Min: 380, panel2Min: 320, fraction: 0.58);
     }
 
     /// <summary>
-    /// Splitter positions, set once the form has its real size. Setting them in the constructor
-    /// would size them against the design-time bounds.
+    /// Gives a splitter its panel minimums and puts it at a fraction of its container.
     /// </summary>
-    private void LayoutPanels()
+    /// <remarks>
+    /// Both parts have to happen here rather than in the constructor, and the reason is not
+    /// obvious. Assigning <see cref="SplitContainer.Panel2MinSize"/> makes the control move its
+    /// splitter to satisfy the new minimum - and a container that has not been laid out yet is
+    /// still 150 px wide, where no position can satisfy a 380 px and a 320 px minimum at once.
+    /// The setter throws from inside itself, naming a property nobody assigned, so the window
+    /// simply never opened.
+    ///
+    /// Waiting for Shown means the sizes are real. The guard covers the case where they are
+    /// nonetheless too small to divide, which the form's MinimumSize should prevent but which
+    /// must not be a crash if it ever stops doing so.
+    /// </remarks>
+    private static void SetSplit(SplitContainer split, int panel1Min, int panel2Min, double fraction)
     {
-        _outer.SplitterDistance = Math.Max(_outer.Panel1MinSize, (int)(_outer.Height * 0.70));
-        _figures.SplitterDistance = Math.Max(_figures.Panel1MinSize, (int)(_figures.Width * 0.58));
+        int extent = split.Orientation == Orientation.Horizontal ? split.Height : split.Width;
+        if (extent < panel1Min + panel2Min + split.SplitterWidth) return;
+
+        split.Panel1MinSize = panel1Min;
+        split.Panel2MinSize = panel2Min;
+        split.SplitterDistance = Math.Clamp(
+            (int)(extent * fraction), panel1Min, extent - panel2Min - split.SplitterWidth);
     }
 
     private ToolStrip BuildToolbar()
@@ -123,16 +142,16 @@ public sealed class MainForm : Form
         };
 
         // Forcing is the default view: 5.35 ln(C/C0) is a statement about forcing, so comparing
-        // forcings borrows nothing from the model. The temperature view has no reference curve
-        // for the same reason - drawing one would need the model's own sensitivity.
-        _quantityButton.Text = "Show temperature";
+        // forcings borrows nothing from the model. Neither temperature view carries a reference
+        // curve, for the same reason - drawing one would need the model's own sensitivity.
+        //
+        // The button names the view it will move to rather than the one showing, so a reader
+        // never has to work out which of three states they are in.
+        _quantityButton.Text = "Show " + _chart.Quantity.Next.Name.ToLowerInvariant();
         _quantityButton.Click += (_, _) =>
         {
-            bool toForcing = ReferenceEquals(_chart.Quantity, Co2ChartQuantity.SurfaceTemperature);
-            _chart.Quantity = toForcing
-                ? Co2ChartQuantity.Forcing
-                : Co2ChartQuantity.SurfaceTemperature;
-            _quantityButton.Text = toForcing ? "Show temperature" : "Show forcing";
+            _chart.Quantity = _chart.Quantity.Next;
+            _quantityButton.Text = "Show " + _chart.Quantity.Next.Name.ToLowerInvariant();
         };
 
         _gridButton.Text = "Hide values";

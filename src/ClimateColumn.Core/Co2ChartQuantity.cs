@@ -54,6 +54,36 @@ public sealed record Co2ChartQuantity(
         ReferenceLabel: "5.35 ln(C/C₀)");
 
     /// <summary>
+    /// Warming from the reference concentration, K - the surface temperature with its base
+    /// state subtracted off.
+    /// </summary>
+    /// <remarks>
+    /// The same curve as <see cref="SurfaceTemperature"/>, shifted, and yet the more readable
+    /// of the two. Absolute temperatures put the whole sweep in a 7 K band starting near 287 K,
+    /// so the axis is mostly empty and the eye has to do the subtraction that the question -
+    /// how much warmer? - was asking for anyway.
+    ///
+    /// It anchors at zero because zero is a real datum here, not a convenience: it is the
+    /// reference concentration, where the warming is zero by construction. That is the same
+    /// reason forcing anchors there.
+    ///
+    /// No reference curve, for the reason on this type: turning 5.35 ln(C/C0) into a temperature
+    /// needs the model's own sensitivity, which would make the reference partly a restatement of
+    /// the thing it is meant to test.
+    /// </remarks>
+    public static readonly Co2ChartQuantity Warming = new(
+        Name: "Warming",
+        AxisTitle: "Surface warming ΔT from 285 ppm (K)",
+        Unit: "K",
+        TickFormat: "F1",
+        EndLabelFormat: "F2",
+        ValueFormat: "F3",
+        AnchorAtZero: true,
+        Model: (s, i) => s.Warming(i),
+        Reference: null,
+        ReferenceLabel: null);
+
+    /// <summary>
     /// Equilibrium surface temperature, K. No reference: see the note on this type.
     /// </summary>
     public static readonly Co2ChartQuantity SurfaceTemperature = new(
@@ -68,8 +98,21 @@ public sealed record Co2ChartQuantity(
         Reference: null,
         ReferenceLabel: null);
 
-    /// <summary>Both quantities, in the order a figure should present them.</summary>
-    public static readonly Co2ChartQuantity[] All = { Forcing, SurfaceTemperature };
+    /// <summary>
+    /// Every quantity, in the order a figure should present them: what the model puts into the
+    /// column, what came out of it, and where that leaves the surface.
+    /// </summary>
+    public static readonly Co2ChartQuantity[] All = { Forcing, Warming, SurfaceTemperature };
+
+    /// <summary>The quantity after this one, wrapping - what a single toggle steps through.</summary>
+    public Co2ChartQuantity Next
+    {
+        get
+        {
+            int at = Array.IndexOf(All, this);
+            return at < 0 ? All[0] : All[(at + 1) % All.Length];
+        }
+    }
 
     /// <summary>
     /// Axis minimum, maximum and gridline spacing covering every series this quantity draws.

@@ -34,7 +34,8 @@ public static class Program
                       --png PATH        render the response chart to a PNG and exit, no window
                       --profile-png PATH  render the vertical profile to a PNG and exit
                       --profile-ppm N   which concentration the profile is drawn at    (580)
-                      --temperature     plot surface temperature instead of forcing
+                      --warming         plot warming from 285 ppm instead of forcing
+                      --temperature     plot absolute surface temperature instead of forcing
                       --dark            use the dark palette for --png
                       --width N         PNG width in pixels   (1100, 620 for the profile)
                       --height N        PNG height in pixels  (700, 820 for the profile)
@@ -96,9 +97,10 @@ public static class Program
                 int width = Int(args, "--width", 1100);
                 int height = Int(args, "--height", 700);
 
-                var quantity = args.Contains("--temperature")
-                    ? Co2ChartQuantity.SurfaceTemperature
-                    : Co2ChartQuantity.Forcing;
+                var quantity =
+                    args.Contains("--temperature") ? Co2ChartQuantity.SurfaceTemperature :
+                    args.Contains("--warming") ? Co2ChartQuantity.Warming :
+                    Co2ChartQuantity.Forcing;
 
                 int? hover = Value(args, "--hover") is null ? null : Index(args, "--hover", 0.0);
 
@@ -125,7 +127,12 @@ public static class Program
         }
         catch (Exception ex)
         {
+            // The message alone is not enough for a window that fails to open. A layout
+            // exception from a WinForms control names the property it rejected and nothing
+            // about which control or which line set it, so the one-line form sent the search
+            // to the wrong place entirely.
             Console.Error.WriteLine($"error: {ex.Message}");
+            Console.Error.WriteLine(ex.StackTrace);
             return 1;
         }
     }
