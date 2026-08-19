@@ -43,6 +43,12 @@ public sealed class Co2ChartView : Control
     /// <summary>Fired when the pointer moves to a different concentration, or leaves.</summary>
     public event Action<int?>? HoverChanged;
 
+    /// <summary>
+    /// Fired when a concentration is clicked. Hovering previews a concentration; clicking pins
+    /// it, so the profile beside the chart can be studied with the pointer somewhere else.
+    /// </summary>
+    public event Action<int>? Picked;
+
     public void SetSweeps(IReadOnlyList<Co2Sweep> sweeps)
     {
         _sweeps = sweeps;
@@ -80,6 +86,14 @@ public sealed class Co2ChartView : Control
         _hoverIndex = nearest;
         HoverChanged?.Invoke(_hoverIndex);
         Invalidate();
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (_sweeps.Count == 0 || e.Button != MouseButtons.Left) return;
+
+        if (NearestIndex(e.X) is int index) Picked?.Invoke(index);
     }
 
     protected override void OnMouseLeave(EventArgs e)

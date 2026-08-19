@@ -81,6 +81,16 @@ public sealed class Co2Sweep
     public required IReadOnlyList<double> Forcings { get; init; }
 
     /// <summary>
+    /// The vertical state at each concentration, in the same order as <see cref="Points"/>.
+    /// </summary>
+    /// <remarks>
+    /// Not required, and empty on a sweep built by hand: a caller that only wants the response
+    /// curve should not have to invent thirty levels per concentration to get one. Anything
+    /// drawing a profile must therefore check for emptiness rather than assume.
+    /// </remarks>
+    public IReadOnlyList<ColumnProfile> Profiles { get; init; } = Array.Empty<ColumnProfile>();
+
+    /// <summary>
     /// Near-surface air temperature of the reference equilibrium, K. Used to freeze a
     /// no-feedback counterpart at exactly this state so the two share a base.
     /// </summary>
@@ -142,6 +152,7 @@ public sealed class Co2Sweep
 
         var points = new List<Co2Point>();
         var forcings = new List<double>();
+        var profiles = new List<ColumnProfile>();
 
         for (int i = 0; i < Concentrations.Length; i++)
         {
@@ -152,13 +163,19 @@ public sealed class Co2Sweep
                 Concentrations[i], options.EffectiveDryOpticalDepth,
                 result.SurfaceTemperature, result.Converged));
 
+            // Snapshotted before ForcingFrom runs. That call copies temperatures out of this
+            // result's column into a column of its own, so it does not disturb this one - but
+            // taking the snapshot first makes that an ordering fact about this code rather than
+            // a standing assumption about someone else's.
+            profiles.Add(ColumnProfile.From(result, label, Concentrations[i]));
+
             forcings.Add(ForcingFrom(reference, options));
         }
 
         return new Co2Sweep
         {
             Label = label, Command = command, Points = points, Forcings = forcings,
-            BaseAirTemperature = reference.NearSurfaceAirTemperature
+            Profiles = profiles, BaseAirTemperature = reference.NearSurfaceAirTemperature
         };
     }
 
