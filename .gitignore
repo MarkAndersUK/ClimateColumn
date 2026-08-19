@@ -14,7 +14,11 @@ TestResults/
 artifacts/
 
 # Generated from docs/model-description.html; regenerate with headless Chrome.
+# The description itself is tracked despite being generated: it is the form most people will
+# actually read, and a reader who wants the document should not have to install a browser and
+# know the incantation to get it. Anything else that lands here stays ignored.
 docs/*.pdf
+!docs/ClimateColumn-model-description.pdf
 
 # Third-party HITRAN line lists: not ours to redistribute, and each carries its own
 # citation requirement. Fetch with scripts/fetch-hitran.ps1.
