@@ -150,6 +150,87 @@ sensible flux goes *negative*: evaporative cooling drops the surface below the a
 coupled to, which is what an over-tight surface–air coupling does when a second loss term
 is added to it.
 
+### Clouds
+
+Clouds do two opposite things, and the model does both. **Off by default** —
+`--cloud-fraction 0` — so every number quoted elsewhere in this README is unaffected.
+
+**Shortwave: they reflect.** The albedo splits into a cloud-free part and a cloudy part, mixed
+by cloud fraction:
+
+$$A = (1-f)\,A_{\text{clear}} + f\,A_{\text{cloud}}$$
+
+This is the step that stops the clouds being counted twice. Earth's 0.30 planetary albedo
+*already contains* the clouds; adding a reflective deck on top of it would reflect the same
+sunlight again. With $A_{\text{clear}} = 0.155$, $A_{\text{cloud}} = 0.361$ and $f = 0.67$ the
+mix returns 0.293 — Earth's all-sky albedo — so switching clouds on does not change how much
+sunlight the planet takes in.
+
+**Longwave: they trap.** The deck is specified by the emissivity it should have as a whole,
+inverted to a hemispheric optical thickness $\tau = -\ln(1-\varepsilon)$ and spread over the
+segments by their **overlap** with the cloud rather than by their full thickness — so a
+1.0–4.5 km deck keeps the same emissivity however the column is divided up.
+
+Cloud opacity is **grey**, and that is not a shortcut but the physics: droplets absorb across a
+band where gas absorbs in lines. So it is added outside the k-distribution rather than inside
+it. Adding it to a band's mean optical depth would have made the cloud thin wherever the gas is
+transparent — which is the exact opposite of what a cloud does, since its longwave work happens
+mostly in the window, where the gas lets the surface radiate straight to space.
+
+**Two skies, one atmosphere.** The longwave is solved twice, with and without the deck, and the
+fluxes mixed by cloud fraction. This is the independent column approximation. The mixing is
+exact — fluxes add, so a sky that is $f$ cloudy really does emit the weighted mean — and what is
+approximate is the premise: that the cloudy and clear parts of the sky do not exchange radiation
+sideways. Both solves see the same temperatures, because there is one atmosphere and one
+surface under both skies.
+
+#### What the model gets, and one thing it found
+
+`ModelOptions.WithTypicalCloud()` is calibrated against the CERES satellite record:
+
+| Cloud radiative effect | Model | CERES |
+|---|---:|---:|
+| Shortwave (reflected away) | −46.96 | −47.1 |
+| Longwave (trapped) | +26.55 | +26.2 |
+| **Net** | **−20.41** | **−20.9** |
+
+W m⁻², measured as CERES measures it — this planet against the same planet with the cloud
+removed and nothing else touched.
+
+Only the longwave figure is a result. The shortwave one is arithmetic on the two albedos and
+the cloud fraction, and those were chosen to reproduce Earth's albedos.
+
+**The calibration is separate from the default's, and finding out why was the interesting
+part.** Switching clouds on over the shipped configuration warms the surface by about 13 K.
+Nothing is broken: that configuration's absorbers were scaled to reach an Earth-like
+temperature on a planet with an 0.30 albedo and *no cloud* — a planet carrying the clouds'
+reflection while having none of their greenhouse. The gas had been quietly standing in for the
+cloud greenhouse all along, so adding a real cloud supplies it twice.
+
+So the cloudy configuration halves the gas optical depth, from 1.8 to 1.1329, and hands the
+difference to the deck. Two constraints, two knobs: the deck's top height sets how much
+longwave it traps, the gas loading sets the surface temperature. Solving both together lands on
+a 1.0–4.5 km deck over 67 % of the sky, at 286.796 K — the same surface as the cloud-free
+default, reached a different way.
+
+There is a second result in that. Running the four corners — each effect on and off — the two
+nearly cancel in **temperature** while emphatically not cancelling in **flux**:
+
+| At the calibrated loading | Surface | Change |
+|---|---:|---:|
+| Clear albedo, no cloud longwave | 287.79 K | — |
+| All-sky albedo, no cloud longwave | 275.33 K | −12.45 K |
+| Clear albedo, with cloud longwave | 299.53 K | +11.75 K |
+| Both — the calibrated configuration | 286.80 K | **−0.99 K** |
+
+A net cloud effect of −20.41 W m⁻² produces about **one** kelvin of cooling, not the twelve a
+single sensitivity applied to that flux would suggest. The reason is that the two components
+have different efficacies here: 0.27 K per W m⁻² for the shortwave against 0.44 for the
+longwave. Read that as a property of *this* model — a fixed 6.5 K km⁻¹ lapse rate and a
+prescribed deck that cannot respond — rather than as a claim about Earth. It does illustrate
+why cloud feedback is the largest remaining uncertainty in real climate sensitivity: a net
+number this small is a difference between two much larger ones.
+
 ### Spherical geometry
 
 By default the column is plane-parallel: a stack of infinite slabs of constant cross-section,
@@ -859,8 +940,10 @@ W m⁻². For orientation, the IPCC central equilibrium sensitivity of 3 K per d
 
 Read these as a demonstration that the model's *dynamics* are sound once it is given a
 sensible forcing, not as an independent estimate of anything. The forcing was calibrated in,
-not predicted, and both configurations still lack clouds, a real spectrum, and every
-feedback except water vapour.
+not predicted, and both configurations are run cloud-free — clouds exist in the model but are
+off by default, and a configuration calibrated without them cannot simply have them switched
+on, for the reason set out under [Clouds](#clouds). Neither configuration has a real spectrum
+or any feedback except water vapour.
 
 #### The calibration is local — do not extrapolate it
 
@@ -972,20 +1055,35 @@ The sweep is `Co2Sweep` in Core, and two front ends draw it.
 full table. Every figure in it is generated from the sweep, so the chart cannot drift from
 the model.
 
-`ClimateColumn.Charts` is a WinForms viewer of the same data: the chart, a values grid that
-tracks the pointer, a light/dark toggle and Save PNG. It also renders headlessly, which is
-how the images in this section are produced:
+`ClimateColumn.Charts` is a WinForms viewer of the same data, showing **two linked figures
+side by side**: the response chart, and the vertical temperature profile of whichever
+concentration the pointer is over. Clicking pins a concentration so the pointer can go
+elsewhere; a values grid below tracks both, and there is a light/dark toggle and a Save PNG
+for each figure.
+
+The pairing is the point. The response chart says the surface warms by 6.37 K at 1000 ppm;
+only the profile says *where in the column* that came from — the convective top lifting from
+4.17 to 5.83 km, the height at which the column reaches the emission temperature rising from
+4.52 to 5.43 km, and the upper column cooling while the surface warms.
+
+The profile figure also marks the convecting layer, the cloud deck where there is one, and the
+ground **separately from the air on it** — those are different temperatures, and their
+difference is what drives the sensible heat flux.
+
+Both render headlessly, which is how the images in this section are produced:
 
 ```
 dotnet run --project src/ClimateColumn.Charts -- --png artifacts/co2-response.png
 ```
 
 ```
---png PATH        render straight to a PNG and exit, no window
---dark            use the dark palette for --png
---width N         PNG width in pixels   (1100)
---height N        PNG height in pixels  (700)
---hover PPM       draw the readout box at this concentration
+--png PATH          render the response chart to a PNG and exit, no window
+--profile-png PATH  render the vertical profile to a PNG and exit
+--profile-ppm N     which concentration the profile is drawn at    (580)
+--dark              use the dark palette for --png
+--width N           PNG width in pixels   (1100, 620 for the profile)
+--height N          PNG height in pixels  (700, 820 for the profile)
+--hover PPM         draw the readout box at this concentration
 ```
 
 `--hover` exists because the readout box is otherwise only reachable by moving a mouse, so
@@ -1000,7 +1098,13 @@ that drawing path verifiable and gives documentation shots a way to include it.
 --segments N               number of segments                     (80)
 --top-km X                 altitude of the column top, km         (50)
 --solar X                  solar constant, W/m2                   (1361)
---albedo X                 planetary albedo                       (0.30)
+--albedo X                 all-sky planetary albedo               (0.30)
+--cloud-fraction X         sky covered by cloud; 0 disables it    (0)
+--cloud-base-km X          cloud base altitude, km                (1.0)
+--cloud-top-km X           cloud top altitude, km                 (4.5)
+--cloud-emissivity X       longwave emissivity of the deck        (0.90)
+--clear-sky-albedo X       albedo of the cloud-free sky           (0.155)
+--cloud-albedo X           albedo of the cloudy sky               (0.361)
 --sw-atm-fraction X        share of absorbed solar taken by air   (0.22)
 --surface-emissivity X     surface longwave emissivity            (0.98)
 --optical-depth X          absorber loading as tau at D = 2       (1.8)
@@ -1181,8 +1285,12 @@ from that folder (`-Source`); see [scripts/README.md](scripts/README.md).
   vertical shape and no relative humidity profile, no advection, and no distinction between
   the boundary layer and the free troposphere. It is off by default, and configurations that
   use it can sit uncomfortably close to runaway.
-- **No clouds** — neither their albedo nor their longwave opacity — and no scattering,
-  no diurnal or seasonal cycle, and a globally averaged solar input ($S_0/4$).
+- **One grey cloud deck.** Clouds now have both an albedo and a longwave opacity, but a single
+  deck at one height with one emissivity stands in for everything from fog to cirrus, and it is
+  prescribed rather than predicted — nothing forms or dissipates it, so it cannot act as a
+  feedback. Its droplets scatter no shortwave explicitly; the reflection is an albedo, not a
+  radiative transfer.
+- **No scattering**, no diurnal or seasonal cycle, and a globally averaged solar input ($S_0/4$).
 - **No feedbacks other than water vapour.** No ice–albedo, no lapse-rate feedback beyond
   what the fixed critical lapse rate already imposes, and a fixed planetary albedo.
 - **The ozone layer is a heating profile, not chemistry.** It deposits a prescribed share of

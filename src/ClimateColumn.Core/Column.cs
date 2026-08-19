@@ -78,6 +78,10 @@ public sealed class Column
 
         column.DistributeOpticalDepth();
         column.DistributeShortwave();
+
+        // Once, not per step: the cloud deck is prescribed geometry and does not follow the
+        // temperature the way the water-vapour absorber does.
+        column.DistributeCloud();
         return column;
     }
 
@@ -372,6 +376,56 @@ public sealed class Column
     {
         double x = (s.MidAltitude - Options.OzoneLayerAltitude) / Options.OzoneLayerWidth;
         return Math.Exp(1.0 - x - Math.Exp(-x));
+    }
+
+    /// <summary>
+    /// Spreads the cloud deck's longwave opacity over the segments it occupies.
+    /// </summary>
+    /// <remarks>
+    /// The deck is specified by the emissivity it should have as a whole, not by an extinction
+    /// coefficient, because emissivity is the thing that is physically meaningful and the thing
+    /// a reader can sanity-check. Inverting <c>eps = 1 - exp(-tau)</c> gives the hemispheric
+    /// optical thickness the deck needs, which is then divided by the diffusivity and spread by
+    /// each segment's <em>overlap</em> with the cloud rather than by its full thickness.
+    ///
+    /// The overlap is what makes this resolution independent. A cloud from 2 to 6 km in a column
+    /// of 1.67 km layers straddles its boundary segments, and weighting by full thickness would
+    /// give a four-kilometre cloud the opacity of a five-kilometre one - so refining the grid
+    /// would change the answer.
+    /// </remarks>
+    public void DistributeCloud()
+    {
+        foreach (var s in Segments) s.CloudExtinction = 0.0;
+
+        if (!Options.HasCloud || Options.CloudLongwaveEmissivity <= 0.0) return;
+
+        double overlapTotal = 0.0;
+        var overlap = new double[Count];
+        for (int i = 0; i < Count; i++)
+        {
+            var s = Segments[i];
+            overlap[i] = Math.Max(0.0,
+                Math.Min(s.TopAltitude, Options.CloudTopAltitude) -
+                Math.Max(s.BottomAltitude, Options.CloudBaseAltitude));
+            overlapTotal += overlap[i];
+        }
+
+        if (overlapTotal <= 0.0) return;
+
+        // A perfectly black deck is infinitely thick. Cap it at an emissivity that is black to
+        // within a part in a million rather than letting an exponential run away.
+        double emissivity = Math.Min(Options.CloudLongwaveEmissivity, 1.0 - 1e-6);
+        double opticalThickness = -Math.Log(1.0 - emissivity);
+        double coefficient = opticalThickness / (Options.Diffusivity * overlapTotal);
+
+        for (int i = 0; i < Count; i++)
+        {
+            if (overlap[i] <= 0.0) continue;
+
+            // The solver multiplies by the segment's full thickness, so scaling by the overlap
+            // fraction here makes the product the overlap length exactly.
+            Segments[i].CloudExtinction = coefficient * overlap[i] / Segments[i].Thickness;
+        }
     }
 
     public void DistributeShortwave()

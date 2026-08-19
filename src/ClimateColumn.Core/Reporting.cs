@@ -78,7 +78,12 @@ public static class Reporting
                       (IsKoenigsbergerDiffusivity(o) ? "  (Koenigsberger-consistent)" : "  (NOT Koenigsberger-consistent)"));
         sb.AppendLine($"  absorber loading (tau@D=2): {o.TotalOpticalDepth * o.OpticalDepthScale:F4}");
         sb.AppendLine($"  column optical depth      : {result.Column.TotalOpticalDepth():F4}");
-        sb.AppendLine($"  solar constant / albedo   : {o.SolarConstant:F1} W/m2 / {o.Albedo:F3}");
+        sb.AppendLine($"  solar constant / albedo   : {o.SolarConstant:F1} W/m2 / {o.EffectiveAlbedo:F3}" +
+                      (o.HasCloud ? $"  (clear {o.ClearSkyAlbedo:F3}, cloudy {o.CloudAlbedo:F3})" : ""));
+        if (o.HasCloud)
+            sb.AppendLine($"  cloud deck                : {o.CloudFraction * 100:F0}% of sky, " +
+                          $"{o.CloudBaseAltitude / 1000.0:F1}-{o.CloudTopAltitude / 1000.0:F1} km, " +
+                          $"eps = {o.CloudLongwaveEmissivity:F2}");
         sb.AppendLine($"  surface emissivity        : {o.SurfaceEmissivity:F3}");
         sb.AppendLine($"  wind speed / h_c          : {o.WindSpeed:F2} m/s / {ConvectionSolver.SurfaceHeatTransferCoefficient(o.WindSpeed):F2} W/m2/K");
         if (o.SphericalGeometry)
@@ -190,6 +195,15 @@ public static class Reporting
         if (result.LatentHeatFlux != 0.0)
         {
             sb.AppendLine($"  surface latent heat       : {result.LatentHeatFlux,10:F3} W/m2  (Bowen ratio {result.BowenRatio:F2})");
+        }
+        if (o.HasCloud)
+        {
+            // Measured as CERES measures it: this planet against the same planet with the cloud
+            // taken out and nothing else touched. A diagnostic of one equilibrium, not a
+            // prediction of what would happen if the clouds went away.
+            sb.AppendLine($"  cloud effect, shortwave   : {result.ShortwaveCloudRadiativeEffect,10:F3} W/m2  (reflected away)");
+            sb.AppendLine($"  cloud effect, longwave    : {result.LongwaveCloudRadiativeEffect,10:F3} W/m2  (trapped)");
+            sb.AppendLine($"  cloud effect, net         : {result.NetCloudRadiativeEffect,10:F3} W/m2");
         }
         sb.AppendLine($"  TOA imbalance             : {result.TopOfAtmosphereImbalance,10:E3} W/m2");
         sb.AppendLine($"  surface imbalance         : {result.SurfaceImbalance,10:E3} W/m2");

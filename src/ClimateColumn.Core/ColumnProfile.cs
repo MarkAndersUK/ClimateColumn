@@ -66,6 +66,18 @@ public sealed class ColumnProfile
     /// </remarks>
     public required double ColumnTopAltitude { get; init; }
 
+    /// <summary>Fraction of the sky covered by cloud, 0 when there is none.</summary>
+    public double CloudFraction { get; init; }
+
+    /// <summary>Cloud base altitude, m. Meaningless when <see cref="CloudFraction"/> is zero.</summary>
+    public double CloudBaseAltitude { get; init; }
+
+    /// <summary>Cloud top altitude, m. Meaningless when <see cref="CloudFraction"/> is zero.</summary>
+    public double CloudTopAltitude { get; init; }
+
+    /// <summary>Net cloud radiative effect at this equilibrium, W m^-2. Zero without cloud.</summary>
+    public double NetCloudRadiativeEffect { get; init; }
+
     /// <summary>
     /// Altitude at which the profile passes through the emission temperature, m, or NaN when
     /// it does not cross within the column.
@@ -162,6 +174,10 @@ public sealed class ColumnProfile
             SurfaceTemperature = result.SurfaceTemperature,
             NearSurfaceAirTemperature = result.NearSurfaceAirTemperature,
             ColumnTopAltitude = result.Column.Options.TopAltitude,
+            CloudFraction = result.Column.Options.CloudFraction,
+            CloudBaseAltitude = result.Column.Options.CloudBaseAltitude,
+            CloudTopAltitude = result.Column.Options.CloudTopAltitude,
+            NetCloudRadiativeEffect = result.NetCloudRadiativeEffect,
             ConvectiveTopAltitude = result.ConvectiveTopAltitude,
             CriticalLapseRate = result.Column.Options.CriticalLapseRate,
             EmissionTemperature = result.EmissionTemperature,

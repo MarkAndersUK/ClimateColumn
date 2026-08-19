@@ -89,6 +89,18 @@ public sealed class Segment
         diffusivity * WindowEmissionCoefficient * Thickness;
 
     /// <summary>
+    /// Volumetric longwave extinction from cloud droplets, m^-1. Zero outside the cloud deck,
+    /// and everywhere when there is no cloud.
+    /// </summary>
+    /// <remarks>
+    /// Kept apart from the gas coefficients because it behaves differently in two ways. It is
+    /// grey - droplets absorb across a band rather than in lines, so this is not scaled by any
+    /// k-distribution - and it applies only to the cloudy fraction of the sky, so it enters one
+    /// of the two solves the independent column approximation makes and not the other.
+    /// </remarks>
+    public double CloudExtinction { get; set; }
+
+    /// <summary>
     /// Volumetric extinction coefficient in each explicit spectral band, m^-1. Empty unless
     /// <see cref="ModelOptions.Bands"/> is in use.
     /// </summary>

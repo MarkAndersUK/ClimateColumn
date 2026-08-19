@@ -40,6 +40,44 @@ public sealed class ModelResult
     /// <summary>Air temperature extrapolated to z = 0, K.</summary>
     public required double NearSurfaceAirTemperature { get; init; }
 
+    /// <summary>
+    /// The longwave solution with the cloud removed and everything else held, or the same
+    /// object as <see cref="Radiation"/> when there is no cloud.
+    /// </summary>
+    public RadiationResult? ClearSkyRadiation { get; init; }
+
+    /// <summary>
+    /// Longwave cloud radiative effect, W m^-2: how much less longwave the planet exports
+    /// because the cloud is there. Positive - a cloud warms in the longwave, because it
+    /// radiates to space from its cold top instead of letting the warm surface do it.
+    /// </summary>
+    public double LongwaveCloudRadiativeEffect =>
+        ClearSkyRadiation is null ? 0.0
+            : ClearSkyRadiation.OutgoingLongwave - Radiation.OutgoingLongwave;
+
+    /// <summary>
+    /// Shortwave cloud radiative effect, W m^-2: how much less sunlight the planet absorbs
+    /// because the cloud is there. Negative - a cloud cools in the shortwave, by reflecting.
+    /// </summary>
+    public double ShortwaveCloudRadiativeEffect =>
+        Column.Options.HasCloud
+            ? Column.Options.AbsorbedSolarFlux - Column.Options.ClearSkyAbsorbedSolarFlux
+            : 0.0;
+
+    /// <summary>
+    /// Net cloud radiative effect, W m^-2 - the two competing terms added. Negative on Earth:
+    /// clouds reflect more than they trap, by around 20 W m^-2.
+    /// </summary>
+    /// <remarks>
+    /// Both terms are measured the way CERES measures them: the difference between the all-sky
+    /// planet and the same planet with the clouds taken out and nothing else touched. That is a
+    /// diagnostic of one equilibrium, not a climate response - it does not say what would happen
+    /// if the clouds actually went away, because the atmosphere would then adjust to their
+    /// absence.
+    /// </remarks>
+    public double NetCloudRadiativeEffect =>
+        LongwaveCloudRadiativeEffect + ShortwaveCloudRadiativeEffect;
+
     public double SurfaceTemperature => Column.SurfaceTemperature;
     public double EmissionTemperature => Column.Options.EmissionTemperature;
 
@@ -130,6 +168,28 @@ public sealed class ColumnModel
 
     public ColumnModel(Column column) => Column = column;
 
+    /// <summary>
+    /// The longwave solution the column actually experiences, and the clear-sky one it is
+    /// measured against.
+    /// </summary>
+    /// <remarks>
+    /// With no cloud the two are the same object and there is exactly one solve, so the cost of
+    /// this machinery to a caller who is not using clouds is a boolean test per step.
+    /// </remarks>
+    private static (RadiationResult AllSky, RadiationResult Clear) SolveSky(Column column)
+    {
+        if (!column.Options.HasCloud)
+        {
+            var only = RadiationSolver.Solve(column);
+            return (only, only);
+        }
+
+        var cloudy = RadiationSolver.Solve(column, includeCloud: true);
+        var clear = RadiationSolver.Solve(column, includeCloud: false);
+
+        return (RadiationResult.Blend(clear, cloudy, column.Options.CloudFraction), clear);
+    }
+
     /// <summary>Advance the column to equilibrium.</summary>
     public ModelResult Run(Action<int, double, double>? progress = null)
     {
@@ -152,12 +212,12 @@ public sealed class ColumnModel
         bool temperatureDependentAbsorber =
             Options.WaterVapourOpticalDepth > 0.0 && Options.WaterVapourFeedback;
 
-        RadiationResult rad = RadiationSolver.Solve(Column);
+        RadiationResult rad = SolveSky(Column).AllSky;
 
         for (step = 1; step <= Options.MaxSteps; step++)
         {
             if (temperatureDependentAbsorber) Column.DistributeOpticalDepth();
-            rad = RadiationSolver.Solve(Column);
+            rad = SolveSky(Column).AllSky;
             sensible = ConvectionSolver.SensibleHeatFlux(Column);
             latent = ConvectionSolver.LatentHeatFlux(Column);
 
@@ -263,7 +323,8 @@ public sealed class ColumnModel
         }
 
         if (temperatureDependentAbsorber) Column.DistributeOpticalDepth();
-        rad = RadiationSolver.Solve(Column);
+        var (allSky, clearSky) = SolveSky(Column);
+        rad = allSky;
         sensible = ConvectionSolver.SensibleHeatFlux(Column);
         latent = ConvectionSolver.LatentHeatFlux(Column);
         double eps = Options.SurfaceEmissivity;
@@ -292,7 +353,8 @@ public sealed class ColumnModel
             SensibleHeatFlux = sensible,
             LatentHeatFlux = latent,
             SolAirTemperature = solAir,
-            NearSurfaceAirTemperature = airTemperature
+            NearSurfaceAirTemperature = airTemperature,
+            ClearSkyRadiation = Options.HasCloud ? clearSky : null
         };
     }
 

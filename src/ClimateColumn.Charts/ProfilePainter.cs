@@ -77,6 +77,7 @@ public static class ProfilePainter
         using var inkBrush = new SolidBrush(theme.Ink);
         using var secondaryBrush = new SolidBrush(theme.InkSecondary);
 
+        DrawCloudDeck(g, plot, curves, Y, theme, tickFont, mutedBrush);
         DrawConvectingLayer(g, plot, curves, X, Y, theme, tickFont, mutedBrush);
         DrawGrid(g, plot, tMin, tMax, tStep, zMax, zStep, X, Y, theme, tickFont, mutedBrush);
         DrawEmissionRule(g, plot, curves, X, theme, tickFont, mutedBrush);
@@ -170,6 +171,48 @@ public static class ProfilePainter
     }
 
     /// <summary>
+    /// The cloud deck as a hatched band, where there is one.
+    /// </summary>
+    /// <remarks>
+    /// Hatched rather than tinted so it does not compete with the convecting layer's tint, which
+    /// it overlaps: on the calibrated cloudy configuration the deck runs 1.0-4.5 km and the
+    /// column convects to 5.3 km, so two flat fills would have compounded into a third shade
+    /// that means nothing.
+    /// </remarks>
+    private static void DrawCloudDeck(Graphics g, Rectangle plot, List<Curve> curves,
+        Func<double, float> Y, ChartTheme theme, Font font, Brush mutedBrush)
+    {
+        var withCloud = curves.FirstOrDefault(c => !c.IsBaseline && c.Profile.CloudFraction > 0.0);
+        if (withCloud is null) return;
+
+        var profile = withCloud.Profile;
+        float top = Y(profile.CloudTopAltitude);
+        float bottom = Y(profile.CloudBaseAltitude);
+
+        using (var hatch = new HatchBrush(HatchStyle.LightUpwardDiagonal,
+                   Color.FromArgb(52, theme.Muted), Color.Transparent))
+        {
+            g.FillRectangle(hatch, plot.Left, top, plot.Width, bottom - top);
+        }
+
+        using (var edge = new Pen(Color.FromArgb(90, theme.Muted), 1f))
+        {
+            g.DrawLine(edge, plot.Left, top, plot.Right, top);
+            g.DrawLine(edge, plot.Left, bottom, plot.Right, bottom);
+        }
+
+        // Right-aligned, because the convecting layer labels itself on the left and the two
+        // bands overlap: the deck runs 1.0-4.5 km and the column convects past it, so both
+        // captions land in the same few hundred metres of figure.
+        using var right = new StringFormat { Alignment = StringAlignment.Far };
+        g.DrawString(
+            string.Format(Inv, "cloud · {0:F0}% of sky · {1:+0.0;-0.0} W/m²",
+                profile.CloudFraction * 100.0, profile.NetCloudRadiativeEffect),
+            font, mutedBrush,
+            new RectangleF(plot.Right - 260, top + 3, 254, 15), right);
+    }
+
+    /// <summary>
     /// The convecting layer as a tint, and a rule at each distinct convective top.
     /// </summary>
     /// <remarks>
@@ -206,10 +249,13 @@ public static class ProfilePainter
             g.DrawLine(pen, plot.Left, Y(z), plot.Right, Y(z));
         }
 
+        // Inside the band rather than above it. Above put the caption a line's height up, which
+        // is where the emission-temperature crossings are labelled - and with a cloud present
+        // the convective top and the crossings sit within a kilometre of each other.
         double gamma = tops[0].Profile.CriticalLapseRate * 1000.0;
         g.DrawString(
             string.Format(Inv, "convecting · {0:F1} K/km", gamma),
-            font, mutedBrush, plot.Left + 6, Y(lowest) - 16);
+            font, mutedBrush, plot.Left + 6, Y(lowest) + 3);
     }
 
     private static void DrawGrid(Graphics g, Rectangle plot, double tMin, double tMax, double tStep,
@@ -323,11 +369,20 @@ public static class ProfilePainter
             placed[i] = i == 0 ? crossings[i].Y : Math.Max(crossings[i].Y, placed[i - 1] + 15f);
         }
 
+        // Backed in the surface colour. These labels sit at whatever height the crossing falls
+        // at, and other annotations are placed by their own physics - the convective top can
+        // land within a few tens of metres of a crossing, and its rule would then be drawn
+        // straight through the text.
         using var right = new StringFormat { Alignment = StringAlignment.Far };
+        using var backing = new SolidBrush(Color.FromArgb(215, theme.Surface));
+
         for (int i = 0; i < crossings.Count; i++)
         {
-            g.DrawString(crossings[i].Text, font, mutedBrush,
-                new RectangleF(x - 82, placed[i] - 7, 74, 15), right);
+            var box = new RectangleF(x - 82, placed[i] - 7, 74, 15);
+            var size = g.MeasureString(crossings[i].Text, font);
+
+            g.FillRectangle(backing, box.Right - size.Width - 1, box.Y, size.Width + 2, box.Height);
+            g.DrawString(crossings[i].Text, font, mutedBrush, box, right);
         }
     }
 

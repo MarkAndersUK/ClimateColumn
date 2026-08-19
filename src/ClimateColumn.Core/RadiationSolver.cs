@@ -43,6 +43,58 @@ public sealed class RadiationResult
     /// <summary>Outgoing longwave radiation at the top of the column, W m^-2.</summary>
     public double OutgoingLongwave => UpwardFlux[^1];
 
+    /// <summary>
+    /// The all-sky result: <paramref name="clear"/> and <paramref name="cloudy"/> mixed by
+    /// cloud fraction. This is the independent column approximation.
+    /// </summary>
+    /// <remarks>
+    /// Exact for what it is asked to do, and approximate in what it assumes. Fluxes are
+    /// additive, so a sky that is <c>f</c> cloudy and <c>1-f</c> clear really does emit the
+    /// weighted mean of the two - there is no linearisation here. What is approximate is the
+    /// premise: that the cloudy and clear parts of the sky can be treated as two independent
+    /// columns side by side, with no radiation passing between them. That fails for broken
+    /// cloud, where a gap lets a neighbouring cloud's side radiate out, and it is the standard
+    /// approximation in models far larger than this one.
+    ///
+    /// Both solves see the same temperatures, because there is one atmosphere and one surface
+    /// underneath both skies. Running two separate columns to their own equilibria would be a
+    /// different and less defensible model - the air over a cloudy patch is not thermally
+    /// isolated from the air 10 km away.
+    /// </remarks>
+    public static RadiationResult Blend(RadiationResult clear, RadiationResult cloudy, double fraction)
+    {
+        double f = Math.Clamp(fraction, 0.0, 1.0);
+        if (f <= 0.0) return clear;
+        if (f >= 1.0) return cloudy;
+
+        static double[] Mix(double[] a, double[] b, double f)
+        {
+            var mixed = new double[a.Length];
+            for (int i = 0; i < a.Length; i++) mixed[i] = (1.0 - f) * a[i] + f * b[i];
+            return mixed;
+        }
+
+        var bandTau = new double[clear.BandOpticalThickness.Length][];
+        for (int b = 0; b < bandTau.Length; b++)
+        {
+            bandTau[b] = Mix(clear.BandOpticalThickness[b], cloudy.BandOpticalThickness[b], f);
+        }
+
+        return new RadiationResult
+        {
+            UpwardFlux = Mix(clear.UpwardFlux, cloudy.UpwardFlux, f),
+            DownwardFlux = Mix(clear.DownwardFlux, cloudy.DownwardFlux, f),
+            NetUpwardFlux = Mix(clear.NetUpwardFlux, cloudy.NetUpwardFlux, f),
+            RadiativeHeating = Mix(clear.RadiativeHeating, cloudy.RadiativeHeating, f),
+            OpticalThickness = Mix(clear.OpticalThickness, cloudy.OpticalThickness, f),
+            BandOpticalThickness = bandTau,
+            BandLabels = cloudy.BandLabels,
+            SegmentEmission = Mix(clear.SegmentEmission, cloudy.SegmentEmission, f),
+            KoenigsbergerEmission = cloudy.KoenigsbergerEmission,
+            SegmentAbsorption = Mix(clear.SegmentAbsorption, cloudy.SegmentAbsorption, f)
+        };
+    }
+
     /// <summary>Downward longwave at the surface ("back radiation"), W m^-2.</summary>
     public double SurfaceDownwardFlux => DownwardFlux[0];
 
@@ -195,7 +247,12 @@ public static class RadiationSolver
         return plans;
     }
 
-    public static RadiationResult Solve(Column column)
+    /// <param name="includeCloud">
+    /// Whether the cloud deck's opacity is in the path. False gives the clear-sky solve that the
+    /// independent column approximation blends with this one, and that the cloud radiative
+    /// effect is measured against.
+    /// </param>
+    public static RadiationResult Solve(Column column, bool includeCloud = true)
     {
         int n = column.Count;
         var options = column.Options;
@@ -247,6 +304,21 @@ public static class RadiationSolver
             surfaceShare[b] = bands[b].Share(column.SurfaceTemperature);
         }
 
+        // Cloud opacity, kept out of the per-band arrays above on purpose. It is grey - liquid
+        // droplets absorb across a band rather than in lines - so it must not be scaled by a
+        // g-point's absorption multiplier, which describes the gas. Adding it into bandTau
+        // would have made the cloud thin where the gas is transparent and thick where the gas
+        // is opaque, which is the opposite of what a cloud does: it is most effective precisely
+        // in the window, where the gas lets the surface radiate straight to space.
+        var cloudTau = new double[n];
+        if (includeCloud && options.HasCloud)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                cloudTau[i] = d * segments[i].CloudExtinction * segments[i].Thickness;
+            }
+        }
+
         var up = new double[n + 1];
         var down = new double[n + 1];
         var heating = new double[n];
@@ -276,7 +348,7 @@ public static class RadiationSolver
                 var absorptivity = new double[n];
                 for (int i = 0; i < n; i++)
                 {
-                    transmittance[i] = Math.Exp(-multiplier * bandTau[i]);
+                    transmittance[i] = Math.Exp(-(multiplier * bandTau[i] + cloudTau[i]));
                     absorptivity[i] = 1.0 - transmittance[i];
                 }
 
@@ -335,7 +407,12 @@ public static class RadiationSolver
             // band's own thickness, so the single-absorber case is unchanged.
             double weighted = 0.0;
             for (int b = 0; b < bands.Length; b++) weighted += share[b][i] * tau[b][i];
-            representativeTau[i] = weighted;
+
+            // The cloud is in every band, so it adds rather than being weighted in. This number
+            // drives the explicit time-step limiter as well as reporting: a cloud layer relaxes
+            // faster than the clear air around it, and a limiter that did not know about the
+            // cloud would take steps too long for it.
+            representativeTau[i] = weighted + cloudTau[i];
         }
 
         return new RadiationResult

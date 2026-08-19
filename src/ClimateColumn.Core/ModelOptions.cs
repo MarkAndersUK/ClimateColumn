@@ -38,7 +38,123 @@ public sealed class ModelOptions
     public double SolarConstant { get; set; } = PhysicalConstants.SolarConstant;
 
     /// <summary>Planetary albedo (fraction of incoming solar reflected).</summary>
+    /// <remarks>
+    /// This is the <em>all-sky</em> albedo, so on Earth's 0.30 it already contains the clouds.
+    /// It is ignored once <see cref="CloudFraction"/> is non-zero, in favour of mixing
+    /// <see cref="ClearSkyAlbedo"/> and <see cref="CloudAlbedo"/> - see
+    /// <see cref="EffectiveAlbedo"/>. Adding a reflective cloud on top of this number would
+    /// count the same clouds twice.
+    /// </remarks>
     public double Albedo { get; set; } = 0.30;
+
+    /// <summary>
+    /// Fraction of the sky covered by cloud, 0 to 1. Zero by default, which leaves every cloud
+    /// term inert and the model exactly as it is without them.
+    /// </summary>
+    /// <remarks>
+    /// Earth's is about 0.67. Clouds are off by default not because they are unimportant - their
+    /// net effect is among the largest terms in the planet's energy budget - but because
+    /// switching them on means splitting the albedo into a clear part and a cloudy part, and a
+    /// caller who has tuned <see cref="Albedo"/> should not have that silently reinterpreted.
+    /// </remarks>
+    public double CloudFraction { get; set; } = 0.0;
+
+    /// <summary>Altitude of the cloud base, m.</summary>
+    public double CloudBaseAltitude { get; set; } = 2_000.0;
+
+    /// <summary>Altitude of the cloud top, m.</summary>
+    /// <remarks>
+    /// This is the parameter the longwave effect is most sensitive to, and it is a genuine
+    /// simplification: one cloud deck stands in for everything from fog to cirrus. A cloud
+    /// radiates to space at its top temperature, so raising the top makes the cloud colder,
+    /// makes it emit less, and warms the surface. 6 km is a middle-cloud deck.
+    /// </remarks>
+    public double CloudTopAltitude { get; set; } = 6_000.0;
+
+    /// <summary>
+    /// Longwave emissivity of the cloud deck as a whole, 0 to 1.
+    /// </summary>
+    /// <remarks>
+    /// Thick water clouds are nearly black in the longwave; thin cirrus are not. 0.9 is a deck
+    /// that is optically thick but not perfectly so. Converted to an extinction coefficient by
+    /// <c>tau = -ln(1 - eps)</c> and spread over the segments the cloud occupies, so the deck
+    /// absorbs and emits exactly this fraction however the column happens to be divided up.
+    /// </remarks>
+    public double CloudLongwaveEmissivity { get; set; } = 0.90;
+
+    /// <summary>Albedo of the cloud-free part of the sky.</summary>
+    /// <remarks>
+    /// Surface reflection, Rayleigh scattering and aerosol, with no cloud. About 0.15 on Earth,
+    /// against an all-sky 0.30 - which is to say that clouds do roughly half the planet's
+    /// reflecting.
+    /// </remarks>
+    public double ClearSkyAlbedo { get; set; } = 0.15;
+
+    /// <summary>Albedo of the cloudy part of the sky.</summary>
+    /// <remarks>
+    /// 0.37 with a 0.67 cloud fraction and a 0.15 clear sky reproduces Earth's 0.30 all-sky
+    /// albedo, so the default cloudy configuration absorbs the same sunlight as the default
+    /// cloud-free one. That is deliberate: it means switching clouds on does not quietly change
+    /// the planet's energy input, and the cloud radiative effect measured from it is a
+    /// comparison against a genuine clear sky rather than against a different planet.
+    /// </remarks>
+    public double CloudAlbedo { get; set; } = 0.37;
+
+    /// <summary>Whether a cloud deck is present at all.</summary>
+    public bool HasCloud => CloudFraction > 0.0;
+
+    /// <summary>
+    /// A cloud deck calibrated to Earth's observed cloud radiative effect, on a column whose
+    /// surface sits at the same temperature as the cloud-free default.
+    /// </summary>
+    /// <remarks>
+    /// <strong>The gas loading is not the default's, and that is the point.</strong> Switching
+    /// clouds on over the shipped configuration warms the surface by about 13 K, because that
+    /// configuration's absorbers were scaled to reach an Earth-like temperature on a planet with
+    /// an 0.30 albedo and no cloud - which is to say, a planet carrying the clouds' reflection
+    /// but none of their greenhouse. Adding a real cloud then supplies a greenhouse effect the
+    /// gas was already standing in for, and the column overheats. Nothing is wrong with either
+    /// configuration; they are calibrated against different assumptions, and they cannot be
+    /// mixed.
+    ///
+    /// So this halves the gas optical depth, from 1.8 to 1.1329, and hands the difference to the
+    /// cloud. Two constraints and two knobs: the deck's top height sets how much longwave it
+    /// traps, and the gas loading sets the surface temperature. Solving both together lands on a
+    /// 1.0-4.5 km deck over 67% of the sky.
+    ///
+    /// What comes out, against the CERES satellite record in brackets:
+    /// shortwave -46.96 (-47.1), longwave +26.55 (+26.2), net -20.41 (-20.9) W m^-2.
+    ///
+    /// Only the longwave figure is a result. The shortwave one is arithmetic - it is fixed the
+    /// moment the two albedos and the cloud fraction are chosen, and those were chosen to
+    /// reproduce Earth's all-sky and clear-sky albedos. The longwave figure came out of the
+    /// radiative transfer once the deck's height was set, and the height was set by requiring
+    /// it.
+    ///
+    /// A single grey deck standing in for everything from fog to cirrus is the obvious
+    /// simplification. Its 4.5 km top is an effective height for the whole cloud field, not a
+    /// claim that Earth's clouds sit at 4.5 km.
+    /// </remarks>
+    public static ModelOptions WithTypicalCloud() => new()
+    {
+        // Halved from the cloud-free default: the cloud now supplies the greenhouse the gas was
+        // standing in for.
+        TotalOpticalDepth = 1.1329,
+        CloudFraction = 0.67,
+        ClearSkyAlbedo = 0.155,
+        CloudAlbedo = 0.361,
+        CloudBaseAltitude = 1_000.0,
+        CloudTopAltitude = 4_500.0,
+        CloudLongwaveEmissivity = 0.90
+    };
+
+    /// <summary>
+    /// The albedo the shortwave actually uses: <see cref="Albedo"/> without cloud, and the
+    /// cloud-weighted mix of clear and cloudy sky with it.
+    /// </summary>
+    public double EffectiveAlbedo => HasCloud
+        ? (1.0 - CloudFraction) * ClearSkyAlbedo + CloudFraction * CloudAlbedo
+        : Albedo;
 
     /// <summary>Fraction of the absorbed solar flux deposited in the atmosphere.</summary>
     public double AtmosphericShortwaveFraction { get; set; } = 0.22;
@@ -559,7 +675,13 @@ public sealed class ModelOptions
     }
 
     /// <summary>Solar flux absorbed by the planet, averaged over the sphere, W m^-2.</summary>
-    public double AbsorbedSolarFlux => 0.25 * SolarConstant * (1.0 - Albedo);
+    public double AbsorbedSolarFlux => 0.25 * SolarConstant * (1.0 - EffectiveAlbedo);
+
+    /// <summary>
+    /// Solar flux the planet would absorb with the clouds removed and nothing else changed,
+    /// W m^-2. The clear-sky half of the shortwave cloud radiative effect.
+    /// </summary>
+    public double ClearSkyAbsorbedSolarFlux => 0.25 * SolarConstant * (1.0 - ClearSkyAlbedo);
 
     /// <summary>Equivalent blackbody (emission) temperature of the planet, K.</summary>
     public double EmissionTemperature =>
@@ -570,6 +692,18 @@ public sealed class ModelOptions
         if (SegmentCount < 1) throw new ArgumentException("SegmentCount must be >= 1.");
         if (TopAltitude <= 0) throw new ArgumentException("TopAltitude must be positive.");
         if (Albedo is < 0 or >= 1) throw new ArgumentException("Albedo must be in [0, 1).");
+        if (CloudFraction is < 0 or > 1)
+            throw new ArgumentException("CloudFraction must be in [0, 1].");
+        if (ClearSkyAlbedo is < 0 or >= 1)
+            throw new ArgumentException("ClearSkyAlbedo must be in [0, 1).");
+        if (CloudAlbedo is < 0 or >= 1)
+            throw new ArgumentException("CloudAlbedo must be in [0, 1).");
+        if (CloudLongwaveEmissivity is < 0 or > 1)
+            throw new ArgumentException("CloudLongwaveEmissivity must be in [0, 1].");
+        if (HasCloud && CloudTopAltitude <= CloudBaseAltitude)
+            throw new ArgumentException("CloudTopAltitude must be above CloudBaseAltitude.");
+        if (HasCloud && CloudBaseAltitude < 0)
+            throw new ArgumentException("CloudBaseAltitude must be >= 0.");
         if (AtmosphericShortwaveFraction is < 0 or > 1)
             throw new ArgumentException("AtmosphericShortwaveFraction must be in [0, 1].");
         if (SurfaceEmissivity is <= 0 or > 1)

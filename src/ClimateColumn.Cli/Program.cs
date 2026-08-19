@@ -229,6 +229,12 @@ public static class Program
             TopAltitude = GetDouble(args, "top-km", 50.0) * 1000.0,
             SolarConstant = GetDouble(args, "solar", PhysicalConstants.SolarConstant),
             Albedo = GetDouble(args, "albedo", 0.30),
+            CloudFraction = GetDouble(args, "cloud-fraction", 0.0),
+            CloudBaseAltitude = GetDouble(args, "cloud-base-km", 1.0) * 1000.0,
+            CloudTopAltitude = GetDouble(args, "cloud-top-km", 4.5) * 1000.0,
+            CloudLongwaveEmissivity = GetDouble(args, "cloud-emissivity", 0.90),
+            ClearSkyAlbedo = GetDouble(args, "clear-sky-albedo", 0.155),
+            CloudAlbedo = GetDouble(args, "cloud-albedo", 0.361),
             AtmosphericShortwaveFraction = GetDouble(args, "sw-atm-fraction", 0.22),
             SurfaceEmissivity = GetDouble(args, "surface-emissivity", 0.98),
             TotalOpticalDepth = GetDouble(args, "optical-depth", 1.8),
@@ -336,7 +342,13 @@ public static class Program
           --segments N               number of segments                     (80)
           --top-km X                 altitude of the column top, km         (50)
           --solar X                  solar constant, W/m2                   (1361)
-          --albedo X                 planetary albedo                       (0.30)
+          --albedo X                 all-sky planetary albedo               (0.30)
+          --cloud-fraction X         sky covered by cloud; 0 disables it    (0)
+          --cloud-base-km X          cloud base altitude, km                (1.0)
+          --cloud-top-km X           cloud top altitude, km                 (4.5)
+          --cloud-emissivity X       longwave emissivity of the deck        (0.90)
+          --clear-sky-albedo X       albedo of the cloud-free sky           (0.155)
+          --cloud-albedo X           albedo of the cloudy sky               (0.361)
           --sw-atm-fraction X        share of absorbed solar taken by air   (0.22)
           --surface-emissivity X     surface longwave emissivity            (0.98)
           --optical-depth X          column hemispheric optical depth       (1.8)
