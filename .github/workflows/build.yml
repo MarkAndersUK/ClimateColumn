@@ -75,6 +75,86 @@ jobs:
             exit 1
           }
 
+  docs:
+    name: the committed PDF matches its source
+    runs-on: ubuntu-latest
+
+    # docs/ClimateColumn-model-description.pdf is generated from docs/model-description.html
+    # and committed alongside it, because the PDF is the form most people actually read. That
+    # makes it the classic stale-artifact problem: edit the HTML, forget to re-print, and the
+    # repository ships a document that disagrees with its own source. Nothing else would
+    # notice.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install a PDF text extractor
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+
+      - name: Re-print the description from its HTML
+        run: |
+          chrome=$(command -v google-chrome || command -v chromium-browser || true)
+          if [ -z "$chrome" ]; then
+            echo "::error::no Chrome or Chromium on the runner to print with"
+            exit 1
+          fi
+
+          "$chrome" --headless --disable-gpu --no-sandbox --no-pdf-header-footer \
+            --print-to-pdf=/tmp/regenerated.pdf \
+            "file://$PWD/docs/model-description.html"
+
+          test -s /tmp/regenerated.pdf || { echo "::error::printing produced nothing"; exit 1; }
+
+      # Compared on extracted text with ALL whitespace removed, not byte for byte. Two things
+      # would otherwise make this fail for reasons that mean nothing: Chrome stamps a creation
+      # time into every PDF it writes, and this runner has none of the Windows fonts the
+      # document asks for - so the regenerated file paginates and line-breaks differently while
+      # saying exactly the same thing. Stripping whitespace removes wrapping, pagination and
+      # the letter-spacing artefacts that extraction sometimes introduces, leaving the
+      # characters in order, which is the thing that must not drift.
+      - name: Compare it against the committed PDF
+        run: |
+          # Ligatures are folded back out as well as whitespace. A font that has an "fi" glyph
+          # extracts U+FB01 where one without it extracts two characters, and the runner's
+          # fallback fonts are not the document's - so without this, "efficiency" could differ
+          # from "efficiency" and report a stale PDF that is perfectly current.
+          strip() {
+            pdftotext -q "$1" - \
+              | sed 's/\xef\xac\x80/ff/g; s/\xef\xac\x81/fi/g; s/\xef\xac\x82/fl/g;
+                     s/\xef\xac\x83/ffi/g; s/\xef\xac\x84/ffl/g' \
+              | tr -d '[:space:]'
+          }
+
+          strip docs/ClimateColumn-model-description.pdf > /tmp/committed.txt
+          strip /tmp/regenerated.pdf                     > /tmp/fresh.txt
+
+          if [ ! -s /tmp/fresh.txt ]; then
+            echo "::error::extracted no text from the regenerated PDF"
+            exit 1
+          fi
+
+          if cmp -s /tmp/committed.txt /tmp/fresh.txt; then
+            echo "ok: the committed PDF is current ($(wc -c < /tmp/fresh.txt) characters)"
+            exit 0
+          fi
+
+          # GNU cmp reports "differ: char N, line M" - char, not byte. Matching the wrong word
+          # would send every real failure to the fallback and print the first 60 characters of
+          # a 40,000-character document, which is the least useful place to look.
+          at=$(cmp /tmp/committed.txt /tmp/fresh.txt 2>&1 | sed -n 's/.*char \([0-9]*\).*/\1/p')
+          [ -n "$at" ] || at=1
+          from=$(( at > 60 ? at - 60 : 1 ))
+
+          echo "::error::docs/ClimateColumn-model-description.pdf is stale - it does not match docs/model-description.html. Re-print it and commit the result."
+          echo "first difference at character $at:"
+          echo "  committed: ...$(cut -c ${from}-$(( at + 60 )) /tmp/committed.txt)..."
+          echo "  from HTML: ...$(cut -c ${from}-$(( at + 60 )) /tmp/fresh.txt)..."
+          echo
+          echo "regenerate with:"
+          echo "  chrome --headless --no-pdf-header-footer \\"
+          echo "    --print-to-pdf=docs/ClimateColumn-model-description.pdf \\"
+          echo "    docs/model-description.html"
+          exit 1
+
   offline:
     name: offline build, no package sources
     runs-on: ubuntu-latest
