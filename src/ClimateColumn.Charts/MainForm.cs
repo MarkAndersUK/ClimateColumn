@@ -33,12 +33,14 @@ public sealed class MainForm : Form
     private readonly ToolStripButton _themeButton = new();
     private readonly ToolStripButton _quantityButton = new();
     private readonly ToolStripButton _gridButton = new();
+    private readonly ToolStripButton _cloudButton = new();
     private readonly ToolStripComboBox _concentration = new();
     private readonly SplitContainer _outer = new();
     private readonly SplitContainer _figures = new();
 
     private Co2Sweep[] _sweeps = Array.Empty<Co2Sweep>();
     private bool _dark;
+    private bool _clouds;
 
     /// <summary>
     /// The concentration the profile shows when the pointer is not over the response chart.
@@ -155,6 +157,18 @@ public sealed class MainForm : Form
             _quantityButton.Text = "Show " + _chart.Quantity.Next.Name.ToLowerInvariant();
         };
 
+        // Switching clouds re-runs the whole sweep, because a cloud deck changes the atmosphere
+        // rather than the drawing. Both configurations are calibrated to the same 286.796 K base
+        // state, so what moves between them is the deck's doing and not a 15 K jump in where the
+        // column started.
+        _cloudButton.Text = "Clouds: off";
+        _cloudButton.Click += async (_, _) =>
+        {
+            _clouds = !_clouds;
+            _cloudButton.Text = _clouds ? "Clouds: on" : "Clouds: off";
+            await RunSweepsAsync();
+        };
+
         _gridButton.Text = "Hide values";
         _gridButton.Click += (_, _) =>
         {
@@ -186,6 +200,8 @@ public sealed class MainForm : Form
         toolbar.Items.Add(new ToolStripSeparator());
         toolbar.Items.Add(new ToolStripLabel("Profile at"));
         toolbar.Items.Add(_concentration);
+        toolbar.Items.Add(new ToolStripSeparator());
+        toolbar.Items.Add(_cloudButton);
         toolbar.Items.Add(new ToolStripSeparator());
         toolbar.Items.Add(_gridButton);
         toolbar.Items.Add(_themeButton);
@@ -233,7 +249,20 @@ public sealed class MainForm : Form
         // Co2Sweep.ForChart marches the column to equilibrium at every concentration, which takes
         // several seconds - sixteen derived bands with sixteen g-points each - so keep it off the
         // UI thread. It returns nothing when the HITRAN line lists have not been fetched.
-        var sweeps = await Task.Run(Co2Sweep.ForChart);
+        bool clouds = _clouds;
+
+        // A sweep takes about a minute, and the cloud toggle can start another one while the
+        // first is still going. Disabling the controls that would do so is simpler than trying
+        // to cancel a march mid-flight.
+        _cloudButton.Enabled = false;
+        _saveChartButton.Enabled = false;
+        _saveProfileButton.Enabled = false;
+        _statusLabel.Text = clouds
+            ? "Running the column to equilibrium at each concentration, under cloud…"
+            : "Running the column to equilibrium at each concentration…";
+
+        var sweeps = await Task.Run(() => Co2Sweep.ForChart(clouds));
+        _cloudButton.Enabled = true;
 
         _sweeps = sweeps;
         _chart.SetSweeps(sweeps);

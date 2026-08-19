@@ -350,6 +350,43 @@ public class CloudTests
             $"({clear:F4} clear against {clouded:F4} at 67% cloud)");
     }
 
+    /// <summary>
+    /// The two charted configurations start from the same surface, so switching clouds on shows
+    /// what the deck does rather than what a different base state does.
+    /// </summary>
+    /// <remarks>
+    /// This is the whole point of keeping two calibrated absorber scales. Reusing one would put
+    /// the cloudy column about 15 K hotter, and every difference read off the figures afterwards
+    /// would be that offset rather than the cloud.
+    /// </remarks>
+    [TestMethod]
+    public void BothChartedSkiesShareABaseState()
+    {
+        var clear = Co2Sweep.ForChart(clouds: false);
+        var cloudy = Co2Sweep.ForChart(clouds: true);
+
+        if (clear.Length == 0 || cloudy.Length == 0)
+        {
+            Assert.Inconclusive("no HITRAN line data; run scripts/fetch-hitran.ps1 -Molecule all.");
+            return;
+        }
+
+        Assert.AreEqual(clear[0].BaseTemperature, cloudy[0].BaseTemperature, 0.05,
+            $"the cloudy configuration should start where the clear one does " +
+            $"({clear[0].BaseTemperature:F3} against {cloudy[0].BaseTemperature:F3} K)");
+
+        // And it must actually be a different atmosphere, not the same one relabelled.
+        Assert.AreNotEqual(
+            Co2Sweep.CalibratedAbsorberScale(0.0),
+            Co2Sweep.CalibratedAbsorberScale(Co2Sweep.CalibratedCloudFraction),
+            "the two skies need different gas loadings to reach the same surface");
+
+        int last = Co2Sweep.Concentrations.Length - 1;
+        Assert.IsTrue(cloudy[0].Forcings[last] < clear[0].Forcings[last],
+            $"the deck should mask part of the CO2 forcing " +
+            $"({clear[0].Forcings[last]:F3} clear against {cloudy[0].Forcings[last]:F3} cloudy)");
+    }
+
     [DataTestMethod]
     [DataRow(-0.1)]
     [DataRow(1.1)]

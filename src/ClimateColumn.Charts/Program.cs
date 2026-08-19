@@ -34,6 +34,7 @@ public static class Program
                       --png PATH        render the response chart to a PNG and exit, no window
                       --profile-png PATH  render the vertical profile to a PNG and exit
                       --profile-ppm N   which concentration the profile is drawn at    (580)
+                      --clouds          run the cloudy configuration instead of the clear one
                       --warming         plot warming from 285 ppm instead of forcing
                       --temperature     plot absolute surface temperature instead of forcing
                       --dark            use the dark palette for --png
@@ -66,7 +67,7 @@ public static class Program
                 Console.WriteLine("Running the column to equilibrium at each concentration…");
 
                 // Empty unless the HITRAN line lists have been fetched.
-                var sweeps = Co2Sweep.ForChart();
+                var sweeps = Co2Sweep.ForChart(args.Contains("--clouds"));
                 if (sweeps.Length == 0)
                 {
                     Console.Error.WriteLine(

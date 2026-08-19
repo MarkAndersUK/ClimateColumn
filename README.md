@@ -1018,6 +1018,24 @@ same span because its absorber was diluted rather than resolved.
 The absorber amount is *exactly* linear in concentration, so the logarithm is produced entirely by
 the band structure. That is the point of the exercise.
 
+#### Clouds on the CO₂ chart
+
+The charted configuration is cloud-free by default. `--clouds`, or the app's **Clouds: off/on**
+button, runs the cloudy one instead - and the two are calibrated to the *same* 286.796 K base
+state, by different gas loadings (15.869 clear, 5.142 cloudy). Without that, switching clouds on
+would move the surface about 15 K and every difference read off the figures afterwards would be
+that offset rather than the cloud.
+
+| | absorber scale | $A$ | vs accepted | drift | ΔT at 1000 ppm |
+|---|---:|---:|---:|---:|---:|
+| Clear | 15.869 | 4.839 | 0.904× | 10.1 % | +4.35 K |
+| 67 % cloud | 5.142 | 4.676 | 0.874× | 1.1 % | +3.45 K |
+
+**A deck masks about 6 % of the CO₂ forcing** - it already blocks part of the upward flux the
+extra CO₂ would have intercepted. The response is also much closer to a pure logarithm, but read
+that with care: holding the base state fixed required dropping the gas loading by a factor of
+three, so cloud and loading moved together and this does not separate them.
+
 #### The far wings and the sub-Lorentzian correction
 
 The Lorentz profile comes from the impact approximation: collisions instantaneous compared with
@@ -1152,6 +1170,7 @@ dotnet run --project src/ClimateColumn.Charts -- --png artifacts/co2-response.pn
 --png PATH          render the response chart to a PNG and exit, no window
 --profile-png PATH  render the vertical profile to a PNG and exit
 --profile-ppm N     which concentration the profile is drawn at    (580)
+--clouds            run the cloudy configuration instead of the clear one
 --warming           plot ΔT from 285 ppm instead of forcing
 --temperature       plot absolute surface temperature instead of forcing
 --dark              use the dark palette for --png

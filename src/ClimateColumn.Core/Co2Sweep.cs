@@ -40,6 +40,26 @@ public sealed class Co2Sweep
     /// <summary>Accepted CO2 forcing coefficient, W m^-2 per ln(C/C0).</summary>
     public const double AcceptedForcingCoefficient = 5.35;
 
+    /// <summary>Cloud fraction the cloudy spectral configuration is calibrated at.</summary>
+    public const double CalibratedCloudFraction = 0.67;
+
+    /// <summary>
+    /// Absorber scale that puts the spectral configuration's base state at an Earth-like
+    /// surface, for a given cloud fraction.
+    /// </summary>
+    /// <remarks>
+    /// There are two, and there have to be. A cloud deck is a greenhouse agent in its own
+    /// right, so a gas loading calibrated without one supplies that greenhouse twice when a
+    /// deck is added, and the column runs about 15 K hot. Both values here put the base state
+    /// at the same 286.796 K, reached different ways: the cloud-free column does the whole
+    /// greenhouse with gas, the cloudy one hands a third of it to the deck.
+    ///
+    /// Anything comparing the two must go through here rather than reusing one scale, or it
+    /// will be comparing two different planets and calling the difference a cloud effect.
+    /// </remarks>
+    public static double CalibratedAbsorberScale(double cloudFraction) =>
+        cloudFraction > 0.0 ? 5.1422 : 15.8688;
+
     /// <summary>
     /// The sweeps a chart should show: the spectrally derived configuration alone, or nothing
     /// when the HITRAN line lists have not been fetched.
@@ -54,9 +74,16 @@ public sealed class Co2Sweep
     /// Returning empty rather than falling back to the grey configurations is deliberate: a
     /// caller with no line data should say so, not quietly draw something else.
     /// </remarks>
-    public static Co2Sweep[] ForChart()
+    /// <param name="clouds">
+    /// Draw the cloudy configuration instead of the cloud-free one. Both sit at the same
+    /// 286.796 K base state - see <see cref="CalibratedAbsorberScale"/> - so switching between
+    /// them shows what the deck does rather than what a 15 K jump in base state does.
+    /// </param>
+    public static Co2Sweep[] ForChart(bool clouds = false)
     {
-        var withFeedback = SpectralBands();
+        double fraction = clouds ? CalibratedCloudFraction : 0.0;
+
+        var withFeedback = SpectralBands(cloudFraction: fraction);
         if (withFeedback is null) return Array.Empty<Co2Sweep>();
 
         // The same configuration with the vapour held at its reference loading. On the forcing
@@ -66,7 +93,8 @@ public sealed class Co2Sweep
         // They separate on the temperature panel.
         var fixedVapour = SpectralBands(
             waterVapourFeedback: false,
-            fixedVapourTemperature: withFeedback.BaseAirTemperature);
+            fixedVapourTemperature: withFeedback.BaseAirTemperature,
+            cloudFraction: fraction);
 
         return fixedVapour is null
             ? new[] { withFeedback }
@@ -321,22 +349,25 @@ public sealed class Co2Sweep
     /// </remarks>
     public static Co2Sweep? SpectralBands(
         int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
-        bool rederive = false, double wingCutoff = 400.0, double absorberScale = 15.8688,
+        bool rederive = false, double wingCutoff = 400.0, double absorberScale = double.NaN,
         bool waterVapourFeedback = true, double? fixedVapourTemperature = null,
-        bool subLorentzianWings = true)
+        bool subLorentzianWings = true, double cloudFraction = 0.0)
     {
         var configure = SpectralConfiguration(bandCount, gPoints, segmentCount, samples, rederive,
             wingCutoff, absorberScale, waterVapourFeedback, fixedVapourTemperature,
-            subLorentzianWings);
+            subLorentzianWings, cloudFraction);
         if (configure is null) return null;
+
+        string sky = cloudFraction > 0.0 ? $" under {cloudFraction:P0} cloud" : "";
 
         return Run(
             waterVapourFeedback
-                ? "Derived from HITRAN bands"
-                : "Same bands, water vapour held fixed",
+                ? "Derived from HITRAN bands" + sky
+                : "Same bands, water vapour held fixed" + sky,
             $"see Co2Sweep.SpectralBands - 6 molecules, {bandCount} derived bands, {gPoints} g-points" +
             (rederive ? ", re-derived per concentration" : "") +
-            (waterVapourFeedback ? "" : ", water vapour frozen at the base state"),
+            (waterVapourFeedback ? "" : ", water vapour frozen at the base state") +
+            (cloudFraction > 0.0 ? $", {cloudFraction:P0} cloud deck" : ""),
             configure);
     }
 
@@ -350,9 +381,9 @@ public sealed class Co2Sweep
     /// </remarks>
     public static Func<double, ModelOptions>? SpectralConfiguration(
         int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
-        bool rederive = false, double wingCutoff = 400.0, double absorberScale = 15.8688,
+        bool rederive = false, double wingCutoff = 400.0, double absorberScale = double.NaN,
         bool waterVapourFeedback = true, double? fixedVapourTemperature = null,
-        bool subLorentzianWings = true)
+        bool subLorentzianWings = true, double cloudFraction = 0.0)
     {
         // Relative amounts per gas, then a common scale chosen for the base state.
         var recipe = new (string File, AbsorberKind Kind, double Share, bool Co2)[]
@@ -365,7 +396,11 @@ public sealed class Co2Sweep
             (HitranLineList.NitrousOxideSevenEightMicron, AbsorberKind.WellMixed, 0.1, false)
         };
 
-        double scale = absorberScale;
+        // Left unset, the loading follows the cloud setting - a gas loading calibrated without a
+        // deck over-warms by about 15 K once one is added, because the deck supplies greenhouse
+        // the gas was already standing in for. An explicit value still wins, which is what the
+        // calibration and convergence studies pass.
+        double scale = double.IsNaN(absorberScale) ? CalibratedAbsorberScale(cloudFraction) : absorberScale;
 
         // Line lists are loaded once even when re-deriving; it is the derivation that repeats,
         // not the file I/O.
@@ -427,7 +462,7 @@ public sealed class Co2Sweep
                     concentration = ppm;
                 }
 
-                return new ModelOptions
+                var options = new ModelOptions
                 {
                     Co2Concentration = concentration,
                     SegmentCount = segmentCount,
@@ -437,6 +472,21 @@ public sealed class Co2Sweep
                     WaterVapourFixedTemperature = fixedVapourTemperature,
                     OzoneFraction = 0.3
                 };
+
+                if (cloudFraction > 0.0)
+                {
+                    // The same deck WithTypicalCloud uses, so the cloudy spectral column and the
+                    // cloudy grey one describe the same sky.
+                    var deck = ModelOptions.WithTypicalCloud();
+                    options.CloudFraction = cloudFraction;
+                    options.ClearSkyAlbedo = deck.ClearSkyAlbedo;
+                    options.CloudAlbedo = deck.CloudAlbedo;
+                    options.CloudBaseAltitude = deck.CloudBaseAltitude;
+                    options.CloudTopAltitude = deck.CloudTopAltitude;
+                    options.CloudLongwaveEmissivity = deck.CloudLongwaveEmissivity;
+                }
+
+                return options;
             };
     }
 
