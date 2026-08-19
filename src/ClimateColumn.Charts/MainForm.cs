@@ -25,6 +25,7 @@ public sealed class MainForm : Form
     private readonly Co2ChartView _chart = new() { Dock = DockStyle.Fill };
     private readonly ProfileView _profile = new() { Dock = DockStyle.Fill };
     private readonly DataGridView _grid = new();
+    private readonly ToolStrip _toolbar = new();
     private readonly StatusStrip _status = new();
     private readonly ToolStripStatusLabel _statusLabel = new();
     private readonly ToolStripButton _saveChartButton = new();
@@ -175,7 +176,9 @@ public sealed class MainForm : Form
             if (_concentration.SelectedIndex >= 0) Pin(_concentration.SelectedIndex);
         };
 
-        var toolbar = new ToolStrip { Dock = DockStyle.Top, GripStyle = ToolStripGripStyle.Hidden };
+        var toolbar = _toolbar;
+        toolbar.Dock = DockStyle.Top;
+        toolbar.GripStyle = ToolStripGripStyle.Hidden;
         toolbar.Items.Add(_saveChartButton);
         toolbar.Items.Add(_saveProfileButton);
         toolbar.Items.Add(new ToolStripSeparator());
@@ -429,8 +432,28 @@ public sealed class MainForm : Form
         _grid.DefaultCellStyle.SelectionBackColor = theme.Grid;
         _grid.DefaultCellStyle.SelectionForeColor = theme.Ink;
 
+        // A ToolStrip paints through a renderer carrying its own colour table, so it does not
+        // follow the form. Setting ForeColor on the form DOES reach its items, which is what
+        // made dark mode unreadable rather than merely unthemed: white labels on the renderer's
+        // system-light strip.
+        _toolbar.Renderer = new ChartToolStripRenderer(theme);
+        _status.Renderer = new ChartToolStripRenderer(theme);
+
+        _toolbar.BackColor = theme.Plane;
+        _toolbar.ForeColor = theme.Ink;
         _status.BackColor = theme.Plane;
         _statusLabel.ForeColor = theme.InkSecondary;
+
+        // The combo box is a hosted Win32 control, not a rendered ToolStrip item, so the
+        // renderer never touches it and it needs its colours set directly.
+        _concentration.BackColor = theme.Surface;
+        _concentration.ForeColor = theme.Ink;
+        _concentration.FlatStyle = FlatStyle.Flat;
+
+        foreach (var item in _toolbar.Items.OfType<ToolStripItem>())
+        {
+            item.ForeColor = theme.Ink;
+        }
     }
 
     private void SaveChartPng()

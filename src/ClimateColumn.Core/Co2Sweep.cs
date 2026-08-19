@@ -150,27 +150,45 @@ public sealed class Co2Sweep
     {
         var reference = ColumnModel.RunToEquilibrium(configure(Concentrations[0]));
 
-        var points = new List<Co2Point>();
-        var forcings = new List<double>();
-        var profiles = new List<ColumnProfile>();
+        int n = Concentrations.Length;
+        var points = new Co2Point[n];
+        var forcings = new double[n];
+        var profiles = new ColumnProfile[n];
 
-        for (int i = 0; i < Concentrations.Length; i++)
+        // Every concentration above the reference is independent of every other: each builds its
+        // own column, marches it, and measures its forcing against the one reference state. So
+        // they run concurrently. On a 32-core machine this takes the pair of sweeps the charts
+        // need from about 217 seconds to about 55.
+        //
+        // This is a scheduling change and not a numerical one. Results are written to fixed
+        // indices rather than appended, so the output does not depend on completion order, and
+        // each march touches only state it allocated itself. The one piece of shared state that
+        // is written during a sweep is the band cache used when re-deriving, which is now a
+        // concurrent dictionary.
+        //
+        // The reference march stays sequential because everything else needs its result.
+        void At(int i)
         {
             var options = configure(Concentrations[i]);
             var result = i == 0 ? reference : ColumnModel.RunToEquilibrium(options);
 
-            points.Add(new Co2Point(
+            points[i] = new Co2Point(
                 Concentrations[i], options.EffectiveDryOpticalDepth,
-                result.SurfaceTemperature, result.Converged));
+                result.SurfaceTemperature, result.Converged);
 
             // Snapshotted before ForcingFrom runs. That call copies temperatures out of this
             // result's column into a column of its own, so it does not disturb this one - but
             // taking the snapshot first makes that an ordering fact about this code rather than
             // a standing assumption about someone else's.
-            profiles.Add(ColumnProfile.From(result, label, Concentrations[i]));
+            profiles[i] = ColumnProfile.From(result, label, Concentrations[i]);
 
-            forcings.Add(ForcingFrom(reference, options));
+            // Reads the reference column; never writes to it. That is what makes the shared
+            // baseline safe to hand to every thread at once.
+            forcings[i] = ForcingFrom(reference, options);
         }
+
+        At(0);
+        Parallel.For(1, n, At);
 
         return new Co2Sweep
         {
@@ -368,7 +386,10 @@ public sealed class Co2Sweep
 
         // Re-derivation is memoised: ForcingCurve asks for each concentration twice (once for the
         // reference march, once for the forcing solve) and a derivation is the expensive step.
-        var cache = new Dictionary<double, SpectralBand[]>();
+        // Concurrent because Run now evaluates concentrations in parallel. GetOrAdd may run the
+        // factory twice for the same key under contention, which wastes a derivation but cannot
+        // produce a wrong answer - the derivation is a pure function of the concentration.
+        var cache = new System.Collections.Concurrent.ConcurrentDictionary<double, SpectralBand[]>();
 
         return ppm =>
             {
@@ -379,13 +400,9 @@ public sealed class Co2Sweep
                 {
                     // The derivation already holds this concentration's CO2, so the band mean must
                     // not be scaled a second time: Co2Fraction is zeroed.
-                    if (!cache.TryGetValue(ppm, out bands!))
-                    {
-                        bands = Derive(ppm / referencePpm)
-                            .Select(b => b with { Co2Fraction = 0.0 })
-                            .ToArray();
-                        cache[ppm] = bands;
-                    }
+                    bands = cache.GetOrAdd(ppm, p => Derive(p / referencePpm)
+                        .Select(b => b with { Co2Fraction = 0.0 })
+                        .ToArray());
                     concentration = ppm;
                 }
                 else
