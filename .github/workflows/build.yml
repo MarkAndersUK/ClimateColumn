@@ -76,92 +76,45 @@ jobs:
           }
 
   docs:
-    name: the committed PDF matches its source
+    name: the committed PDF was printed from the committed HTML
     runs-on: ubuntu-latest
 
-    # docs/ClimateColumn-model-description.pdf is generated from docs/model-description.html
-    # and committed alongside it, because the PDF is the form most people actually read. That
-    # makes it the classic stale-artifact problem: edit the HTML, forget to re-print, and the
-    # repository ships a document that disagrees with its own source. Nothing else would
-    # notice.
+    # docs/ClimateColumn-model-description.pdf is committed alongside its HTML source, because
+    # the PDF is the form most people actually read. That makes it the classic stale-artifact
+    # problem: edit the HTML, forget to re-print, and the repository ships a document that
+    # disagrees with its own source. Nothing else would notice.
+    #
+    # The check is a hash of the source rather than a comparison of the PDF, and the first
+    # attempt here is why. Re-printing on a runner and diffing the extracted text fails for a
+    # reason no normalisation can reach: the runner does not have this document's fonts, so the
+    # results grid at the top wraps differently and pdftotext reads it down the columns instead
+    # of across them - "SURFACE OUTGOING GREENHOUSE TEMPERATURE LONGWAVE EFFECT" against
+    # "SURFACE TEMPERATURE OUTGOING LONGWAVE". Same words, same length, different order, and
+    # nothing wrong with either file.
+    #
+    # scripts/build-description-pdf.ps1 prints the PDF and records the hash of the HTML it came
+    # from, in one step so the two cannot come apart. This recomputes it.
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install a PDF text extractor
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
-
-      - name: Re-print the description from its HTML
+      - name: Check the recorded source hash still matches
         run: |
-          chrome=$(command -v google-chrome || command -v chromium-browser || true)
-          if [ -z "$chrome" ]; then
-            echo "::error::no Chrome or Chromium on the runner to print with"
+          test -f docs/model-description.sha256 || {
+            echo "::error::docs/model-description.sha256 is missing - run scripts/build-description-pdf.ps1"
             exit 1
-          fi
-
-          "$chrome" --headless --disable-gpu --no-sandbox --no-pdf-header-footer \
-            --print-to-pdf=/tmp/regenerated.pdf \
-            "file://$PWD/docs/model-description.html"
-
-          test -s /tmp/regenerated.pdf || { echo "::error::printing produced nothing"; exit 1; }
-
-      # Compared on extracted text with ALL whitespace removed, not byte for byte. Two things
-      # would otherwise make this fail for reasons that mean nothing: Chrome stamps a creation
-      # time into every PDF it writes, and this runner has none of the Windows fonts the
-      # document asks for - so the regenerated file paginates and line-breaks differently while
-      # saying exactly the same thing. Stripping whitespace removes wrapping, pagination and
-      # the letter-spacing artefacts that extraction sometimes introduces, leaving the
-      # characters in order, which is the thing that must not drift.
-      - name: Compare it against the committed PDF
-        run: |
-          # Ligatures are folded back out as well as whitespace. A font that has an "fi" glyph
-          # extracts U+FB01 where one without it extracts two characters, and the runner's
-          # fallback fonts are not the document's - so without this, "efficiency" could differ
-          # from "efficiency" and report a stale PDF that is perfectly current.
-          strip() {
-            pdftotext -q "$1" - \
-              | sed 's/\xef\xac\x80/ff/g; s/\xef\xac\x81/fi/g; s/\xef\xac\x82/fl/g;
-                     s/\xef\xac\x83/ffi/g; s/\xef\xac\x84/ffl/g' \
-              | tr -d '[:space:]'
           }
 
-          strip docs/ClimateColumn-model-description.pdf > /tmp/committed.txt
-          strip /tmp/regenerated.pdf                     > /tmp/fresh.txt
+          recorded=$(tr -d "[:space:]" < docs/model-description.sha256 | tr "A-F" "a-f")
+          actual=$(sha256sum docs/model-description.html | awk '{print $1}')
 
-          if [ ! -s /tmp/fresh.txt ]; then
-            echo "::error::extracted no text from the regenerated PDF"
-            exit 1
-          fi
-
-          if cmp -s /tmp/committed.txt /tmp/fresh.txt; then
-            echo "ok: the committed PDF is current ($(wc -c < /tmp/fresh.txt) characters)"
+          if [ "$recorded" = "$actual" ]; then
+            echo "ok: the committed PDF was printed from this HTML ($actual)"
             exit 0
           fi
 
-          # Finding the divergence has to cope with one file being a prefix of the other, which
-          # is what happens when a section is added or dropped. GNU cmp says "differ: char N"
-          # for a substitution but "EOF on ... after byte N" for a truncation, and parsing its
-          # prose gets one of those wrong whichever word you match. cmp -l lists the differing
-          # positions instead; when it lists none, the files agree up to the shorter one's end
-          # and the divergence is exactly there.
-          la=$(wc -c < /tmp/committed.txt)
-          lb=$(wc -c < /tmp/fresh.txt)
-          at=$(cmp -l /tmp/committed.txt /tmp/fresh.txt 2>/dev/null | head -1 | awk '{print $1}')
-          [ -n "$at" ] || at=$(( (la < lb ? la : lb) + 1 ))
-          from=$(( at > 60 ? at - 60 : 1 ))
-
-          echo "::error::docs/ClimateColumn-model-description.pdf is stale - it does not match docs/model-description.html. Re-print it and commit the result."
-          echo "committed: $la characters"
-          echo "from HTML: $lb characters"
-          echo "first difference at character $at:"
-          echo "  committed: ...$(cut -c ${from}-$(( at + 60 )) /tmp/committed.txt)..."
-          echo "  from HTML: ...$(cut -c ${from}-$(( at + 60 )) /tmp/fresh.txt)..."
-          echo "  committed, as bytes: $(cut -c $(( at > 6 ? at - 6 : 1 ))-$(( at + 6 )) /tmp/committed.txt | od -c | head -2)"
-          echo "  from HTML, as bytes: $(cut -c $(( at > 6 ? at - 6 : 1 ))-$(( at + 6 )) /tmp/fresh.txt | od -c | head -2)"
-          echo
-          echo "regenerate with:"
-          echo "  chrome --headless --no-pdf-header-footer \\"
-          echo "    --print-to-pdf=docs/ClimateColumn-model-description.pdf \\"
-          echo "    docs/model-description.html"
+          echo "::error::docs/model-description.html has changed since the PDF was last printed. Run scripts/build-description-pdf.ps1 and commit both the PDF and the hash."
+          echo "  recorded when printed: $recorded"
+          echo "  the HTML now hashes to: $actual"
           exit 1
 
   offline:
