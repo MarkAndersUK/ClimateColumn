@@ -137,17 +137,26 @@ jobs:
             exit 0
           fi
 
-          # GNU cmp reports "differ: char N, line M" - char, not byte. Matching the wrong word
-          # would send every real failure to the fallback and print the first 60 characters of
-          # a 40,000-character document, which is the least useful place to look.
-          at=$(cmp /tmp/committed.txt /tmp/fresh.txt 2>&1 | sed -n 's/.*char \([0-9]*\).*/\1/p')
-          [ -n "$at" ] || at=1
+          # Finding the divergence has to cope with one file being a prefix of the other, which
+          # is what happens when a section is added or dropped. GNU cmp says "differ: char N"
+          # for a substitution but "EOF on ... after byte N" for a truncation, and parsing its
+          # prose gets one of those wrong whichever word you match. cmp -l lists the differing
+          # positions instead; when it lists none, the files agree up to the shorter one's end
+          # and the divergence is exactly there.
+          la=$(wc -c < /tmp/committed.txt)
+          lb=$(wc -c < /tmp/fresh.txt)
+          at=$(cmp -l /tmp/committed.txt /tmp/fresh.txt 2>/dev/null | head -1 | awk '{print $1}')
+          [ -n "$at" ] || at=$(( (la < lb ? la : lb) + 1 ))
           from=$(( at > 60 ? at - 60 : 1 ))
 
           echo "::error::docs/ClimateColumn-model-description.pdf is stale - it does not match docs/model-description.html. Re-print it and commit the result."
+          echo "committed: $la characters"
+          echo "from HTML: $lb characters"
           echo "first difference at character $at:"
           echo "  committed: ...$(cut -c ${from}-$(( at + 60 )) /tmp/committed.txt)..."
           echo "  from HTML: ...$(cut -c ${from}-$(( at + 60 )) /tmp/fresh.txt)..."
+          echo "  committed, as bytes: $(cut -c $(( at > 6 ? at - 6 : 1 ))-$(( at + 6 )) /tmp/committed.txt | od -c | head -2)"
+          echo "  from HTML, as bytes: $(cut -c $(( at > 6 ? at - 6 : 1 ))-$(( at + 6 )) /tmp/fresh.txt | od -c | head -2)"
           echo
           echo "regenerate with:"
           echo "  chrome --headless --no-pdf-header-footer \\"
