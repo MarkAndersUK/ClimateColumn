@@ -226,6 +226,52 @@ public class MethaneTests
     }
 
     /// <summary>
+    /// What the flat response actually was: an artefact of scaling a band mean while its
+    /// k-distribution stayed at the reference.
+    /// </summary>
+    /// <remarks>
+    /// Dialling methane through each band's recorded share stretches the band mean, but the
+    /// distribution inside it goes on describing an atmosphere with the reference amount in it -
+    /// so the saturation that ought to develop in methane's strong lines never appears, and the
+    /// response comes out nearly linear.
+    ///
+    /// Re-deriving the bands at each concentration removes that, and the law changes: sqrt(M)
+    /// goes from second place to first and beats a straight line by a factor of nearly thirty.
+    /// The observed law is sqrt(M), so the physics was there all along and the approximation was
+    /// hiding it.
+    ///
+    /// Re-derivation is not the default because its magnitude is uncalibrated - it forces 1.51x
+    /// the accepted value at present-day methane, since the share was calibrated in the scaled
+    /// mode. Making it default needs its own joint calibration of share and absorber scale.
+    /// </remarks>
+    [TestMethod]
+    public void RederivingTheBandsRecoversTheSquareRootLaw()
+    {
+        var scaled = MethaneSweep.Run(equilibrate: false, rederive: false);
+        var derived = MethaneSweep.Run(equilibrate: false, rederive: true);
+
+        if (scaled is null || derived is null)
+        {
+            Assert.Inconclusive("no HITRAN line data; run scripts/fetch-hitran.ps1 -Molecule all.");
+            return;
+        }
+
+        Assert.AreEqual("linear in M", scaled.BestFit().Name,
+            "scaling the band share should give the flat, nearly linear response");
+
+        Assert.AreEqual("√M", derived.BestFit().Name,
+            "re-deriving should recover the observed square-root law: " +
+            string.Join(", ", derived.LawFits().Select(f => $"{f.Name} {f.Residual:F4}")));
+
+        var root = derived.LawFits().Single(f => f.Name == "√M");
+        var linear = derived.LawFits().Single(f => f.Name == "linear in M");
+
+        Assert.IsTrue(linear.Residual > 10.0 * root.Residual,
+            $"re-derived, a square root should beat a straight line decisively " +
+            $"({root.Residual:F4} against {linear.Residual:F4})");
+    }
+
+    /// <summary>
     /// The measurement that ruled out the easy explanation, kept so the next person does not
     /// have to make it again.
     /// </summary>

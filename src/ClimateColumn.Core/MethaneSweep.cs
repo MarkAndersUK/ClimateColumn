@@ -158,12 +158,23 @@ public sealed class MethaneSweep
     /// False measures forcings alone, which needs one march rather than ten and is what a study
     /// of the forcing law wants.
     /// </param>
+    /// <param name="rederive">
+    /// Re-derive the bands at every methane concentration rather than deriving once at the
+    /// reference and scaling each band's methane share. See the remarks on
+    /// <see cref="Co2Sweep.SpectralConfiguration"/>: scaling the share stretches a band's mean
+    /// while its k-distribution goes on describing the reference atmosphere, so saturation that
+    /// ought to develop in methane's strong lines never appears. Costs one band derivation per
+    /// concentration.
+    /// </param>
     public static MethaneSweep? Run(bool equilibrate = true, double cloudFraction = 0.0,
         double methaneShare = Co2Sweep.CalibratedMethaneShare,
-        double absorberScale = double.NaN)
+        double absorberScale = double.NaN, bool rederive = false)
     {
-        var configure = Co2Sweep.SpectralConfiguration(
-            absorberScale: absorberScale, cloudFraction: cloudFraction, methaneShare: methaneShare);
+        Func<double, ModelOptions>? At(double ppb) => Co2Sweep.SpectralConfiguration(
+            absorberScale: absorberScale, cloudFraction: cloudFraction, methaneShare: methaneShare,
+            methaneRatio: rederive ? ppb / Concentrations[0] : 1.0);
+
+        var configure = At(Concentrations[0]);
         if (configure is null) return null;
 
         // The bands are derived once at the reference; methane is dialled through each band's
@@ -171,14 +182,16 @@ public sealed class MethaneSweep
         // approximation and it is the same one: the band mean scales correctly with
         // concentration while the k-distribution inside it goes on describing the reference
         // atmosphere.
-        ModelOptions At(double ppb)
+        ModelOptions Options(double ppb)
         {
-            var options = configure(Co2Sweep.Concentrations[0]);
-            options.MethaneConcentration = ppb;
+            // Re-derived bands already hold this concentration, so the dial stays at the
+            // reference; otherwise the dial is what does the work.
+            var options = (rederive ? At(ppb)! : configure)(Co2Sweep.Concentrations[0]);
+            options.MethaneConcentration = rederive ? Concentrations[0] : ppb;
             return options;
         }
 
-        var reference = ColumnModel.RunToEquilibrium(At(Concentrations[0]));
+        var reference = ColumnModel.RunToEquilibrium(Options(Concentrations[0]));
 
         int n = Concentrations.Length;
         var points = new MethanePoint[n];
@@ -186,7 +199,7 @@ public sealed class MethaneSweep
 
         void Measure(int i)
         {
-            var options = At(Concentrations[i]);
+            var options = Options(Concentrations[i]);
             var result = i == 0 || !equilibrate
                 ? reference
                 : ColumnModel.RunToEquilibrium(options);

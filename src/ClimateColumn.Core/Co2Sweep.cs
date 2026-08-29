@@ -388,7 +388,7 @@ public sealed class Co2Sweep
         bool rederive = false, double wingCutoff = 400.0, double absorberScale = double.NaN,
         bool waterVapourFeedback = true, double? fixedVapourTemperature = null,
         bool subLorentzianWings = true, double cloudFraction = 0.0,
-        double methaneShare = CalibratedMethaneShare)
+        double methaneShare = CalibratedMethaneShare, double methaneRatio = 1.0)
     {
         var configure = SpectralConfiguration(bandCount, gPoints, segmentCount, samples, rederive,
             wingCutoff, absorberScale, waterVapourFeedback, fixedVapourTemperature,
@@ -421,7 +421,7 @@ public sealed class Co2Sweep
         bool rederive = false, double wingCutoff = 400.0, double absorberScale = double.NaN,
         bool waterVapourFeedback = true, double? fixedVapourTemperature = null,
         bool subLorentzianWings = true, double cloudFraction = 0.0,
-        double methaneShare = CalibratedMethaneShare)
+        double methaneShare = CalibratedMethaneShare, double methaneRatio = 1.0)
     {
         // Relative amounts per gas, then a common scale chosen for the base state.
         var recipe = new (string File, AbsorberKind Kind, double Share, bool Co2)[]
@@ -454,20 +454,32 @@ public sealed class Co2Sweep
         }
 
         // Bands derived with CO2 present at the given multiple of its reference amount.
+        static bool IsMethane(string file) => file == HitranLineList.MethaneSevenSevenMicron;
+
         IReadOnlyList<SpectralBand> Derive(double co2Ratio)
         {
+            // Methane is scaled inside the derivation rather than through the band share, so its
+            // k-distribution is measured from a spectrum that actually contains that much of it.
+            // Scaling the share instead stretches the band mean while the distribution goes on
+            // describing the reference atmosphere - which is the approximation this parameter
+            // exists to test.
+            double Amount((IReadOnlyList<SpectralLine> Lines, AbsorberKind Kind, double Amount,
+                           bool Co2, string File) m) =>
+                m.Co2 ? m.Amount * co2Ratio
+                     : IsMethane(m.File) ? m.Amount * methaneRatio
+                     : m.Amount;
+
             // Only CO2 gets a chi factor, and only when asked for: it is fitted to the CO2 nu_2
             // band, so giving it to water vapour or ozone would be inventing spectroscopy.
             var molecules = lines
                 .Select(m => new BandDerivation.Molecule(
-                    m.Lines, m.Kind, m.Co2 ? m.Amount * co2Ratio : m.Amount, m.Co2, m.File,
+                    m.Lines, m.Kind, Amount(m), m.Co2, m.File,
                     m.Co2 && subLorentzianWings ? ChiFactor.CarbonDioxideNu2 : null,
 
-                    // Methane is marked dialable so its share of each band is recorded and can
-                    // be scaled later. Its amount is not touched here - unlike CO2, which is
-                    // re-derived at each concentration, methane is derived once at its reference
-                    // and scaled through the band share.
-                    RespondsToMethane: m.File == HitranLineList.MethaneSevenSevenMicron))
+                    // Marked dialable so each band records methane's share and can scale it
+                    // later. When methaneRatio is not 1 the derivation already holds the right
+                    // amount, and the share is cleared below so it is not scaled twice.
+                    RespondsToMethane: IsMethane(m.File)))
                 .ToList();
 
             return BandDerivation.DeriveShared(
@@ -476,7 +488,13 @@ public sealed class Co2Sweep
                 continuumOpticalDepth: 1.2 * scale);
         }
 
-        var referenceBands = rederive ? null : Derive(1.0);
+        // A re-derived methane band already holds its own amount, so its share must be cleared or
+        // dialling MethaneConcentration would scale it a second time.
+        var referenceBands = rederive
+            ? null
+            : methaneRatio != 1.0
+                ? Derive(1.0).Select(b => b with { MethaneFraction = 0.0 }).ToArray()
+                : Derive(1.0);
         double referencePpm = Concentrations[0];
 
         // Re-derivation is memoised: ForcingCurve asks for each concentration twice (once for the
