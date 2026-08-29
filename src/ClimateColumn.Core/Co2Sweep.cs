@@ -44,6 +44,30 @@ public sealed class Co2Sweep
     public const double CalibratedCloudFraction = 0.67;
 
     /// <summary>
+    /// Methane's share of the absorber recipe, chosen so its present-day forcing matches
+    /// observation.
+    /// </summary>
+    /// <remarks>
+    /// <strong>This is a calibration, and it changes what the methane sweep can claim.</strong>
+    /// The share was 0.2, picked to sit sensibly among the other gases and never checked against
+    /// anything. At that loading the model gave 3.42 W m^-2 for the pre-industrial to present-day
+    /// rise, against an accepted 0.62 - about five and a half times too much, because the recipe
+    /// sets relative amounts rather than observed abundances.
+    ///
+    /// Setting it here means methane's forcing <em>magnitude</em> is no longer a prediction. What
+    /// remains predicted is the shape: which law the response follows as concentration rises,
+    /// which is set by the band structure and is unaffected by scaling the amount. That is the
+    /// interesting quantity anyway, and it is the one the chart is about.
+    ///
+    /// The model does not predict atmospheric composition and never claimed to - CO2's amount is
+    /// calibrated too, through the absorber scale. The difference is that CO2's scale is set by
+    /// the base state and its forcing coefficient then comes out as a genuine prediction, whereas
+    /// methane's is set by the forcing directly. Worth knowing when reading the two figures side
+    /// by side.
+    /// </remarks>
+    public const double CalibratedMethaneShare = 0.01814;
+
+    /// <summary>
     /// Absorber scale that puts the spectral configuration's base state at an Earth-like
     /// surface, for a given cloud fraction.
     /// </summary>
@@ -58,7 +82,7 @@ public sealed class Co2Sweep
     /// will be comparing two different planets and calling the difference a cloud effect.
     /// </remarks>
     public static double CalibratedAbsorberScale(double cloudFraction) =>
-        cloudFraction > 0.0 ? 5.1422 : 15.8688;
+        cloudFraction > 0.0 ? 5.6215 : 17.4399;
 
     /// <summary>
     /// The sweeps a chart should show: the spectrally derived configuration alone, or nothing
@@ -363,11 +387,12 @@ public sealed class Co2Sweep
         int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
         bool rederive = false, double wingCutoff = 400.0, double absorberScale = double.NaN,
         bool waterVapourFeedback = true, double? fixedVapourTemperature = null,
-        bool subLorentzianWings = true, double cloudFraction = 0.0)
+        bool subLorentzianWings = true, double cloudFraction = 0.0,
+        double methaneShare = CalibratedMethaneShare)
     {
         var configure = SpectralConfiguration(bandCount, gPoints, segmentCount, samples, rederive,
             wingCutoff, absorberScale, waterVapourFeedback, fixedVapourTemperature,
-            subLorentzianWings, cloudFraction);
+            subLorentzianWings, cloudFraction, methaneShare);
         if (configure is null) return null;
 
         string sky = cloudFraction > 0.0 ? $" under {cloudFraction:P0} cloud" : "";
@@ -395,7 +420,8 @@ public sealed class Co2Sweep
         int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
         bool rederive = false, double wingCutoff = 400.0, double absorberScale = double.NaN,
         bool waterVapourFeedback = true, double? fixedVapourTemperature = null,
-        bool subLorentzianWings = true, double cloudFraction = 0.0)
+        bool subLorentzianWings = true, double cloudFraction = 0.0,
+        double methaneShare = CalibratedMethaneShare)
     {
         // Relative amounts per gas, then a common scale chosen for the base state.
         var recipe = new (string File, AbsorberKind Kind, double Share, bool Co2)[]
@@ -404,7 +430,7 @@ public sealed class Co2Sweep
             (HitranLineList.WaterVapourBending,    AbsorberKind.WaterVapour, 2.0, false),
             (HitranLineList.Co2FifteenMicron,      AbsorberKind.WellMixed,   2.0, true),
             (HitranLineList.OzoneNineSixMicron,    AbsorberKind.Ozone,       0.5, false),
-            (HitranLineList.MethaneSevenSevenMicron, AbsorberKind.WellMixed, 0.2, false),
+            (HitranLineList.MethaneSevenSevenMicron, AbsorberKind.WellMixed, methaneShare, false),
             (HitranLineList.NitrousOxideSevenEightMicron, AbsorberKind.WellMixed, 0.1, false)
         };
 

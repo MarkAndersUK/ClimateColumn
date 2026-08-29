@@ -75,6 +75,52 @@ public sealed class MethaneSweep
     /// between them. Both curves are monotonic and both pass through zero at the reference, so
     /// over a narrow range either will fit; it is the wide end of the sweep that separates them.
     /// </remarks>
+    /// <summary>
+    /// The three candidate laws, each with the residual its best fit through the origin leaves.
+    /// Smallest wins.
+    /// </summary>
+    /// <remarks>
+    /// Three rather than two, and the third was added after looking at the figure. A band's
+    /// response depends on how saturated it is: an optically thick band gives ln(M), a partly
+    /// saturated one gives sqrt(M), and a genuinely thin one gives M - the absorber is simply
+    /// linear because nothing is blocking anything yet.
+    ///
+    /// Once methane was calibrated down to an amount that produces the observed present-day
+    /// forcing, the model's 7.7 um band became thin enough that its response is nearly linear -
+    /// weaker curvature than the sqrt(M) the real atmosphere shows. Leaving the comparison at
+    /// two laws would have reported "closer to sqrt(M)" and hidden that.
+    /// </remarks>
+    public (string Name, double Residual)[] LawFits() => new[]
+    {
+        ("linear in M", Residual(m => m - ReferencePpb)),
+        ("√M", Residual(m => Math.Sqrt(m) - Math.Sqrt(ReferencePpb))),
+        ("ln M", Residual(m => Math.Log(m / ReferencePpb)))
+    };
+
+    /// <summary>The law that fits best, by residual.</summary>
+    public (string Name, double Residual) BestFit() =>
+        LawFits().OrderBy(f => f.Item2).First();
+
+    private double Residual(Func<double, double> basis)
+    {
+        double num = 0.0, den = 0.0;
+        for (int i = 0; i < Points.Count; i++)
+        {
+            double x = basis(Concentrations[i]);
+            num += x * Forcings[i];
+            den += x * x;
+        }
+        double slope = den > 0 ? num / den : 0.0;
+
+        double residual = 0.0;
+        for (int i = 0; i < Points.Count; i++)
+        {
+            double d = Forcings[i] - slope * basis(Concentrations[i]);
+            residual += d * d;
+        }
+        return residual;
+    }
+
     public (double SquareRoot, double Logarithm) FitResiduals()
     {
         double SumSquares(Func<double, double> basis)
@@ -112,9 +158,12 @@ public sealed class MethaneSweep
     /// False measures forcings alone, which needs one march rather than ten and is what a study
     /// of the forcing law wants.
     /// </param>
-    public static MethaneSweep? Run(bool equilibrate = true, double cloudFraction = 0.0)
+    public static MethaneSweep? Run(bool equilibrate = true, double cloudFraction = 0.0,
+        double methaneShare = Co2Sweep.CalibratedMethaneShare,
+        double absorberScale = double.NaN)
     {
-        var configure = Co2Sweep.SpectralConfiguration(cloudFraction: cloudFraction);
+        var configure = Co2Sweep.SpectralConfiguration(
+            absorberScale: absorberScale, cloudFraction: cloudFraction, methaneShare: methaneShare);
         if (configure is null) return null;
 
         // The bands are derived once at the reference; methane is dialled through each band's

@@ -56,12 +56,15 @@ public static class MethaneChartPainter
         double rootSpan = Math.Sqrt(ppb[^1]) - Math.Sqrt(c0);
         double logSpan = Math.Log(ppb[^1] / c0);
 
+        double linSpan = ppb[^1] - c0;
+
         double Root(int i) => rootSpan > 0 ? last * (Math.Sqrt(ppb[i]) - Math.Sqrt(c0)) / rootSpan : 0.0;
         double Log(int i) => logSpan > 0 ? last * Math.Log(ppb[i] / c0) / logSpan : 0.0;
+        double Lin(int i) => linSpan > 0 ? last * (ppb[i] - c0) / linSpan : 0.0;
 
         double hi = 0.0;
         for (int i = 0; i < n; i++)
-            hi = Math.Max(hi, Math.Max(sweep.Forcings[i], Math.Max(Root(i), Log(i))));
+            hi = Math.Max(hi, Math.Max(sweep.Forcings[i], Math.Max(Root(i), Math.Max(Log(i), Lin(i)))));
 
         double step = Co2ChartQuantity.NiceStep(hi / 5.0);
         double yMax = Math.Ceiling((hi + 0.35 * step) / step) * step;
@@ -81,9 +84,12 @@ public static class MethaneChartPainter
         DrawAxisTitles(g, bounds, plot, labelFont, secondaryBrush);
         DrawLegend(g, bounds, sweep, theme, labelFont, secondaryBrush);
 
-        // The two laws first, so the model's own points sit on top of whichever it follows.
+        // The laws first, so the model's own points sit on top of whichever it follows. Three,
+        // because a band's response depends on how saturated it is: thick gives ln, partly
+        // saturated gives sqrt, and genuinely thin gives linear.
         DrawLaw(g, n, i => Log(i), i => ppb[i], X, Y, theme.Reference, new[] { 2f, 4f });
         DrawLaw(g, n, i => Root(i), i => ppb[i], X, Y, theme.Series[2], new[] { 6f, 3f });
+        DrawLaw(g, n, i => Lin(i), i => ppb[i], X, Y, theme.Series[1], new[] { 1f, 3f });
 
         DrawModel(g, sweep, X, Y, theme);
         DrawEndLabels(g, plot, sweep, n, Root, Log, Y, theme, boldFont, tickFont, inkBrush, mutedBrush);
@@ -172,8 +178,9 @@ public static class MethaneChartPainter
         var keys = new (string Text, Color Colour, float[]? Dash)[]
         {
             (sweep.Label, theme.Series[0], null),
-            ("√M — the weak-band law", theme.Series[2], new[] { 6f, 3f }),
-            ("ln M — CO₂'s saturated-band law", theme.Reference, new[] { 2f, 4f })
+            ("M — a thin, unsaturated band", theme.Series[1], new[] { 1f, 3f }),
+            ("√M — a partly saturated band", theme.Series[2], new[] { 6f, 3f }),
+            ("ln M — CO₂'s saturated band", theme.Reference, new[] { 2f, 4f })
         };
 
         foreach (var (text, colour, dash) in keys)
@@ -279,12 +286,12 @@ public static class MethaneChartPainter
     private static void DrawVerdict(Graphics g, Rectangle plot, MethaneSweep sweep,
         Font font, Brush mutedBrush)
     {
-        var (root, log) = sweep.FitResiduals();
+        var fits = sweep.LawFits().OrderBy(f => f.Residual).ToArray();
 
         string text = string.Format(Inv,
-            "Closer to √M than to ln M — residual {0:F3} against {1:F3} — but between them: " +
-            "above √M through the middle, and below ln M",
-            root, log);
+            "Best fit: {0} (residual {1:F3}); then {2} at {3:F3}, {4} at {5:F3}",
+            fits[0].Name, fits[0].Residual, fits[1].Name, fits[1].Residual,
+            fits[2].Name, fits[2].Residual);
 
         g.DrawString(text, font, mutedBrush, plot.Left + 8, plot.Top + 6);
     }

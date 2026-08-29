@@ -144,18 +144,17 @@ public class MethaneTests
     }
 
     /// <summary>
-    /// The result this was built to find. Nothing in the model imposes a forcing law - the band
-    /// structure comes from line data and the absorber is exactly linear in concentration - so
-    /// which law the response follows is the spectroscopy's answer, not the model's assumption.
+    /// Methane's present-day forcing is calibrated to observation, so this pins the calibration
+    /// rather than testing a prediction.
     /// </summary>
     /// <remarks>
-    /// CO2's band is saturated at its core, so extra gas acts only in the wings and the forcing
-    /// grows as ln(C). Methane's 7.7 um band is weak and largely unsaturated, so extra gas acts
-    /// across the whole band and the forcing grows as sqrt(M). Getting the second law out of the
-    /// same machinery that produced the first is a sharper test than either alone.
+    /// Worth a test precisely because it is a calibration: it is a constant that will drift
+    /// silently the next time the absorber recipe or the wing treatment changes, and nothing
+    /// else would notice. <see cref="Co2Sweep.CalibratedMethaneShare"/> and the absorber scale
+    /// were solved together for exactly this.
     /// </remarks>
     [TestMethod]
-    public void TheResponseIsCloserToASquareRootThanToALogarithm()
+    public void PresentDayForcingMatchesObservation()
     {
         var sweep = MethaneSweep.Run(equilibrate: false);
         if (sweep is null)
@@ -164,19 +163,92 @@ public class MethaneTests
             return;
         }
 
+        int now = MethaneSweep.PresentDayIndex;
+
         Assert.AreEqual(0.0, sweep.Forcings[0], 1e-9,
             "the reference concentration must force by exactly nothing");
+
+        Assert.AreEqual(sweep.AcceptedForcing(now), sweep.Forcings[now], 0.02,
+            $"700 to {MethaneSweep.PresentDayPpb:F0} ppb should give the accepted forcing, " +
+            "since the methane share was calibrated to make it so");
 
         for (int i = 1; i < sweep.Points.Count; i++)
         {
             Assert.IsTrue(sweep.Forcings[i] > sweep.Forcings[i - 1],
                 $"forcing should rise with methane ({MethaneSweep.Concentrations[i]:F0} ppb)");
         }
+    }
 
-        var (root, log) = sweep.FitResiduals();
+    /// <summary>
+    /// The shape, which is the part that is <em>not</em> calibrated - and it comes out wrong in a
+    /// way worth recording.
+    /// </summary>
+    /// <remarks>
+    /// A band's forcing law follows its saturation: optically thick gives ln(M), partly saturated
+    /// gives sqrt(M), genuinely thin gives M. The real atmosphere shows sqrt(M), so real methane
+    /// is partly saturated. This model comes out nearly linear - a weaker curvature - and so
+    /// over-predicts away from the point it was calibrated at: 1.00x accepted at 1900 ppb by
+    /// construction, but 1.15x at 3500.
+    ///
+    /// The obvious explanation is wrong and the test records that too, because it cost time. The
+    /// bands are not thin: methane's hemispheric optical depth is 1.07 and 2.39 in the two bands
+    /// it occupies, which is squarely the partly-saturated regime that should give sqrt(M).
+    /// Whatever is flattening the response is not a lack of methane opacity.
+    /// </remarks>
+    [TestMethod]
+    public void TheResponseIsFlatterThanTheObservedSquareRoot()
+    {
+        var sweep = MethaneSweep.Run(equilibrate: false);
+        if (sweep is null)
+        {
+            Assert.Inconclusive("no HITRAN line data; run scripts/fetch-hitran.ps1 -Molecule all.");
+            return;
+        }
 
-        Assert.IsTrue(root < log,
-            $"the response should fit a square root better than a logarithm " +
-            $"(residuals {root:E3} against {log:E3})");
+        var fits = sweep.LawFits().OrderBy(f => f.Residual).ToArray();
+
+        Assert.AreEqual("linear in M", fits[0].Name,
+            "the model's methane response is nearly linear: " +
+            string.Join(", ", fits.Select(f => $"{f.Name} {f.Residual:F4}")));
+
+        // Still better than a logarithm, which is the one thing it clearly is not.
+        var log = sweep.LawFits().Single(f => f.Name == "ln M");
+        var root = sweep.LawFits().Single(f => f.Name == "√M");
+        Assert.IsTrue(root.Residual < log.Residual,
+            $"a square root should still beat a logarithm ({root.Residual:F4} against {log.Residual:F4})");
+
+        // The consequence of the flatter shape: it over-predicts beyond the calibration point.
+        int last = sweep.Points.Count - 1;
+        double ratio = sweep.Forcings[last] / sweep.AcceptedForcing(last);
+        Assert.IsTrue(ratio > 1.05,
+            $"a flatter-than-sqrt response should over-predict at the top of the sweep " +
+            $"(got {ratio:F3}x accepted at {MethaneSweep.Concentrations[last]:F0} ppb)");
+    }
+
+    /// <summary>
+    /// The measurement that ruled out the easy explanation, kept so the next person does not
+    /// have to make it again.
+    /// </summary>
+    [TestMethod]
+    public void MethanesBandsAreNotOpticallyThin()
+    {
+        var configure = Co2Sweep.SpectralConfiguration();
+        if (configure is null)
+        {
+            Assert.Inconclusive("no HITRAN line data; run scripts/fetch-hitran.ps1 -Molecule all.");
+            return;
+        }
+
+        var options = configure(Co2Sweep.Concentrations[0]);
+        double d = options.Diffusivity;
+
+        double thickest = options.Bands!
+            .Where(b => b.MethaneFraction > 0.01)
+            .Max(b => d * b.OpticalDepth * b.MethaneFraction);
+
+        Assert.IsTrue(thickest > 1.0,
+            $"methane's richest band should be optically thick enough to curve the response " +
+            $"(hemispheric tau {thickest:F3}) - so a nearly linear response is not explained by " +
+            "the band being thin");
     }
 }
