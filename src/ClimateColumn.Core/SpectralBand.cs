@@ -55,6 +55,25 @@ public sealed record SpectralBand
     public double Co2Fraction { get; init; } = 1.0;
 
     /// <summary>
+    /// Share of <see cref="OpticalDepth"/> that is methane, and so responds to
+    /// <see cref="ModelOptions.MethaneConcentration"/>. Zero by default.
+    /// </summary>
+    /// <remarks>
+    /// A second share rather than a general table of gases, because two are what the model
+    /// actually dials. Both are well-mixed, so both sit inside <see cref="OpticalDepth"/> and
+    /// the two shares plus the fixed remainder must sum to one - which is checked, since a band
+    /// whose shares oversubscribe it would gain optical depth out of nowhere the moment either
+    /// concentration moved.
+    ///
+    /// Methane earns the second slot because its band behaves differently from CO2's in the way
+    /// that matters here: the 7.7 um band is weak and largely unsaturated, so its forcing grows
+    /// as the square root of concentration rather than the logarithm. That contrast is a test of
+    /// whether the band structure is doing real work, since nothing in the model imposes either
+    /// law.
+    /// </remarks>
+    public double MethaneFraction { get; init; }
+
+    /// <summary>
     /// Column optical depth in this band from water vapour, at
     /// <see cref="ModelOptions.WaterVapourReferenceTemperature"/>. Follows Clausius-Clapeyron
     /// and the vapour scale height, like the single-band vapour absorber.
@@ -91,7 +110,16 @@ public sealed record SpectralBand
     /// <see cref="ModelOptions.EffectiveDryOpticalDepth"/> does for the single-band case.
     /// </summary>
     public double EffectiveOpticalDepth(double concentrationRatio) =>
-        OpticalDepth * ((1.0 - Co2Fraction) + Co2Fraction * concentrationRatio);
+        EffectiveOpticalDepth(concentrationRatio, 1.0);
+
+    /// <summary>
+    /// As above, with methane dialled as well. The fixed remainder is whatever neither gas
+    /// claims, so a band with no methane in it behaves exactly as it did before methane existed.
+    /// </summary>
+    public double EffectiveOpticalDepth(double concentrationRatio, double methaneRatio) =>
+        OpticalDepth * ((1.0 - Co2Fraction - MethaneFraction)
+                        + Co2Fraction * concentrationRatio
+                        + MethaneFraction * methaneRatio);
 
     /// <summary>True when nothing at all absorbs in this band.</summary>
     public bool IsTransparent =>

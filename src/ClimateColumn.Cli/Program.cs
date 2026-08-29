@@ -242,6 +242,8 @@ public static class Program
             Diffusivity = GetDouble(args, "diffusivity", PhysicalConstants.KoenigsbergerDiffusivity),
             Co2Concentration = GetDouble(args, "co2-ppm", 285.0),
             Co2ReferenceConcentration = GetDouble(args, "co2-reference-ppm", 285.0),
+            MethaneConcentration = GetDouble(args, "ch4-ppb", 700.0),
+            MethaneReferenceConcentration = GetDouble(args, "ch4-reference-ppb", 700.0),
             Co2AbsorberFraction = GetDouble(args, "co2-fraction", 1.0),
             WindowShortWavelength = GetMicrons(args, "window-from-um", 0.0),
             WindowLongWavelength = GetMicrons(args, "window-to-um", 0.0),
@@ -356,6 +358,8 @@ public static class Program
           --diffusivity X            two-stream factor D; 2 = Koenigsberger (2.0)
           --co2-ppm X                CO2 concentration                      (285)
           --co2-reference-ppm X      ppm at which --optical-depth applies   (285)
+          --ch4-ppb X                methane concentration, ppb             (700)
+          --ch4-reference-ppb X      ppb at which the band share applies    (700)
           --co2-fraction X           CO2 share of dry absorber at ref ppm   (1.0)
           --co2-scenario A,B,C       equilibrium at each ppm, with forcings
           --window-from-um X         transparent window, short edge, um     (none)

@@ -224,6 +224,7 @@ public sealed class Column
         }
 
         double ratio = Options.Co2ConcentrationRatio;
+        double methaneRatio = Options.MethaneConcentrationRatio;
         double foreignShare = Options.ContinuumForeignFraction;
 
         for (int b = 0; b < bandCount; b++)
@@ -231,7 +232,7 @@ public sealed class Column
             var band = Options.Bands[b];
 
             double cDry = dryColumn > 0
-                ? band.EffectiveOpticalDepth(ratio) / (d2 * dryColumn) : 0.0;
+                ? band.EffectiveOpticalDepth(ratio, methaneRatio) / (d2 * dryColumn) : 0.0;
             double cVapour = vapourColumn > 0
                 ? band.WaterVapourOpticalDepth * vapourScale / (d2 * vapourColumn) : 0.0;
 

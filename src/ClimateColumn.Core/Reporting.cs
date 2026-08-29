@@ -96,6 +96,9 @@ public static class Reporting
         if (o.SurfaceMoistureAvailability > 0.0)
             sb.AppendLine($"  moisture availability / RH: {o.SurfaceMoistureAvailability:F2} / {o.NearSurfaceRelativeHumidity:F2}");
 
+        if (Math.Abs(o.MethaneConcentration - o.MethaneReferenceConcentration) > 1e-9)
+            sb.AppendLine($"  methane                   : {o.MethaneConcentration:F0} ppb vs {o.MethaneReferenceConcentration:F0} ppb reference  " +
+                          $"(x{o.MethaneConcentrationRatio:F3})");
         if (Math.Abs(o.Co2Concentration - o.Co2ReferenceConcentration) > 1e-9)
             sb.AppendLine($"  CO2                       : {o.Co2Concentration:F1} ppm vs {o.Co2ReferenceConcentration:F1} ppm reference  " +
                           $"(dry tau {o.TotalOpticalDepth * o.OpticalDepthScale:F4} -> {o.EffectiveDryOpticalDepth:F4})");

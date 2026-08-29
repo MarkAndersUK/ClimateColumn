@@ -157,7 +157,8 @@ public static class BandDerivation
         double OpticalDepth,
         bool RespondsToCo2,
         string Label,
-        ChiFactor? Chi = null);
+        ChiFactor? Chi = null,
+        bool RespondsToMethane = false);
 
     /// <summary>
     /// Derives one band set covering several molecules at once, on a shared wavenumber grid.
@@ -255,7 +256,7 @@ public static class BandDerivation
             int to = Math.Clamp((int)Math.Ceiling((edges[b + 1] - fromWavenumber) / step), from + 1, samples);
             int width = to - from;
 
-            double wellMixed = 0.0, vapour = 0.0, ozone = 0.0, carbon = 0.0;
+            double wellMixed = 0.0, vapour = 0.0, ozone = 0.0, carbon = 0.0, methane = 0.0;
 
             foreach (var (molecule, tau) in spectra)
             {
@@ -271,6 +272,7 @@ public static class BandDerivation
                 }
 
                 if (molecule.RespondsToCo2) carbon += mean;
+                if (molecule.RespondsToMethane) methane += mean;
             }
 
             // The band's structure is the distribution of the total absorption in it, relative to
@@ -295,6 +297,13 @@ public static class BandDerivation
 
                 OpticalDepth = wellMixed,
                 Co2Fraction = wellMixed > 0 ? Math.Clamp(carbon / wellMixed, 0.0, 1.0) : 0.0,
+
+                // Clamped against what CO2 did not already claim, so the two shares can never
+                // oversubscribe the band. Both gases are well-mixed and share one OpticalDepth.
+                MethaneFraction = wellMixed > 0
+                    ? Math.Clamp(methane / wellMixed, 0.0,
+                        Math.Max(0.0, 1.0 - Math.Clamp(carbon / wellMixed, 0.0, 1.0)))
+                    : 0.0,
                 WaterVapourOpticalDepth = vapour,
                 OzoneOpticalDepth = ozone,
                 ContinuumOpticalDepth = continuumOpticalDepth * continuumWeight[b],

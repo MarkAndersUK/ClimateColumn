@@ -435,7 +435,13 @@ public sealed class Co2Sweep
             var molecules = lines
                 .Select(m => new BandDerivation.Molecule(
                     m.Lines, m.Kind, m.Co2 ? m.Amount * co2Ratio : m.Amount, m.Co2, m.File,
-                    m.Co2 && subLorentzianWings ? ChiFactor.CarbonDioxideNu2 : null))
+                    m.Co2 && subLorentzianWings ? ChiFactor.CarbonDioxideNu2 : null,
+
+                    // Methane is marked dialable so its share of each band is recorded and can
+                    // be scaled later. Its amount is not touched here - unlike CO2, which is
+                    // re-derived at each concentration, methane is derived once at its reference
+                    // and scaled through the band share.
+                    RespondsToMethane: m.File == HitranLineList.MethaneSevenSevenMicron))
                 .ToList();
 
             return BandDerivation.DeriveShared(

@@ -207,6 +207,21 @@ public sealed class ModelOptions
     /// <summary>Concentration at which <see cref="TotalOpticalDepth"/> is specified, ppm.</summary>
     public double Co2ReferenceConcentration { get; set; } = 285.0;
 
+    /// <summary>Methane concentration, ppb.</summary>
+    /// <remarks>
+    /// Parts per billion, not per million: methane is about two hundred times rarer than CO2, and
+    /// quoting it in ppm would put every value the model is asked about below 0.002. 700 ppb is
+    /// roughly the pre-industrial level, against about 1900 today.
+    ///
+    /// Only bands carrying a <see cref="SpectralBand.MethaneFraction"/> respond to it, so this
+    /// does nothing in the grey configurations - there is no methane in a single grey absorber to
+    /// dial.
+    /// </remarks>
+    public double MethaneConcentration { get; set; } = 700.0;
+
+    /// <summary>Concentration at which the derived methane share is specified, ppb.</summary>
+    public double MethaneReferenceConcentration { get; set; } = 700.0;
+
     /// <summary>
     /// Share of the dry absorber attributable to CO2 **at the reference concentration** -
     /// the part that responds to <see cref="Co2Concentration"/>. The remaining (1 - this)
@@ -362,6 +377,10 @@ public sealed class ModelOptions
     /// <summary>CO2 concentration as a multiple of the reference, for band scaling.</summary>
     public double Co2ConcentrationRatio =>
         Co2ReferenceConcentration > 0 ? Co2Concentration / Co2ReferenceConcentration : 1.0;
+
+    /// <summary>Methane concentration as a multiple of its reference.</summary>
+    public double MethaneConcentrationRatio =>
+        MethaneReferenceConcentration > 0 ? MethaneConcentration / MethaneReferenceConcentration : 1.0;
 
     /// <summary>True when a window of non-zero width has been configured.</summary>
     public bool HasWindow => WindowLongWavelength > WindowShortWavelength;
@@ -630,6 +649,15 @@ public sealed class ModelOptions
             }
             if (band.Co2Fraction is < 0 or > 1)
                 throw new ArgumentException($"Band '{band.Label}' has Co2Fraction outside [0, 1].");
+            if (band.MethaneFraction is < 0 or > 1)
+                throw new ArgumentException($"Band '{band.Label}' has MethaneFraction outside [0, 1].");
+
+            // Both gases live inside the same OpticalDepth, so shares that sum past one would
+            // manufacture opacity out of nothing the moment either concentration moved.
+            if (band.Co2Fraction + band.MethaneFraction > 1.0 + 1e-9)
+                throw new ArgumentException(
+                    $"Band '{band.Label}' gives CO2 and methane {band.Co2Fraction:F3} + " +
+                    $"{band.MethaneFraction:F3} of one optical depth.");
 
             if (band.IsRemainder) { remainders++; continue; }
 
@@ -736,6 +764,10 @@ public sealed class ModelOptions
                 "WindowContinuumOpticalDepth needs a window to sit inside; set " +
                 "WindowShortWavelength and WindowLongWavelength.");
         if (Co2Concentration < 0) throw new ArgumentException("Co2Concentration must be >= 0.");
+        if (MethaneConcentration < 0)
+            throw new ArgumentException("MethaneConcentration must be >= 0.");
+        if (MethaneReferenceConcentration <= 0)
+            throw new ArgumentException("MethaneReferenceConcentration must be positive.");
         if (Co2ReferenceConcentration <= 0)
             throw new ArgumentException("Co2ReferenceConcentration must be positive.");
         if (Co2AbsorberFraction is < 0 or > 1)
