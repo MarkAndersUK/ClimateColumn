@@ -168,7 +168,7 @@ public sealed class MethaneSweep
     /// </param>
     public static MethaneSweep? Run(bool equilibrate = true, double cloudFraction = 0.0,
         double methaneShare = Co2Sweep.CalibratedMethaneShare,
-        double absorberScale = double.NaN, bool rederive = false)
+        double absorberScale = double.NaN, bool rederive = true)
     {
         Func<double, ModelOptions>? At(double ppb) => Co2Sweep.SpectralConfiguration(
             absorberScale: absorberScale, cloudFraction: cloudFraction, methaneShare: methaneShare,

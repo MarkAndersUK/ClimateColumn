@@ -50,22 +50,28 @@ public sealed class Co2Sweep
     /// <remarks>
     /// <strong>This is a calibration, and it changes what the methane sweep can claim.</strong>
     /// The share was 0.2, picked to sit sensibly among the other gases and never checked against
-    /// anything. At that loading the model gave 3.42 W m^-2 for the pre-industrial to present-day
-    /// rise, against an accepted 0.62 - about five and a half times too much, because the recipe
-    /// sets relative amounts rather than observed abundances.
+    /// anything. At that loading the pre-industrial to present-day rise forced 3.42 W m^-2 against
+    /// an accepted 0.62, because the recipe sets relative amounts rather than observed abundances.
     ///
-    /// Setting it here means methane's forcing <em>magnitude</em> is no longer a prediction. What
-    /// remains predicted is the shape: which law the response follows as concentration rises,
-    /// which is set by the band structure and is unaffected by scaling the amount. That is the
-    /// interesting quantity anyway, and it is the one the chart is about.
+    /// Solved jointly with <see cref="CalibratedAbsorberScale"/> and <em>in the re-derived
+    /// mode</em>, which is what <see cref="MethaneSweep"/> now uses: the share sets the forcing,
+    /// the scale sets the base state, and cutting methane removes absorber, so neither can be
+    /// chosen alone. Three passes converge on 0.00687 and 17.7622 with the base state held at
+    /// 286.7964 K and the forcing on 0.6167 W m^-2 against 0.6167 accepted.
     ///
-    /// The model does not predict atmospheric composition and never claimed to - CO2's amount is
-    /// calibrated too, through the absorber scale. The difference is that CO2's scale is set by
+    /// Calibrated in one mode does not mean calibrated in the other. Scaling the band share
+    /// instead of re-deriving gives a different magnitude at this share, which is why the two are
+    /// not interchangeable.
+    ///
+    /// Setting this means methane's forcing <em>magnitude</em> is no longer a prediction. Its
+    /// shape still is, and with re-derivation the shape comes out right: sqrt(M), the observed
+    /// law. The model does not predict atmospheric composition and never claimed to - CO2's amount
+    /// is calibrated too, through the absorber scale. The difference is that CO2's scale is set by
     /// the base state and its forcing coefficient then comes out as a genuine prediction, whereas
     /// methane's is set by the forcing directly. Worth knowing when reading the two figures side
     /// by side.
     /// </remarks>
-    public const double CalibratedMethaneShare = 0.01814;
+    public const double CalibratedMethaneShare = 0.00687;
 
     /// <summary>
     /// Absorber scale that puts the spectral configuration's base state at an Earth-like
@@ -82,7 +88,7 @@ public sealed class Co2Sweep
     /// will be comparing two different planets and calling the difference a cloud effect.
     /// </remarks>
     public static double CalibratedAbsorberScale(double cloudFraction) =>
-        cloudFraction > 0.0 ? 5.6215 : 17.4399;
+        cloudFraction > 0.0 ? 5.6982 : 17.7622;
 
     /// <summary>
     /// The sweeps a chart should show: the spectrally derived configuration alone, or nothing
