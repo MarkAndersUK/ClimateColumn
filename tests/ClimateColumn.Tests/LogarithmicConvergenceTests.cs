@@ -191,4 +191,65 @@ public class LogarithmicConvergenceTests
             $"R^2 against a pure logarithm is only {rSquared:F7}");
     }
 
+    /// <summary>
+    /// What sets the drift is the gas loading, not the cloud deck it was confounded with.
+    /// </summary>
+    /// <remarks>
+    /// The clouded configuration is close to a pure logarithm - about 1% drift against 10% clear
+    /// - and for a long time that could not be attributed, because holding the base state fixed
+    /// under cloud required dropping the absorber scale threefold. Cloud and loading moved
+    /// together, so either could have been responsible.
+    ///
+    /// Crossing them separates them: the cloud's loading under a clear sky drifts about as little
+    /// as the clouded configuration does, with no cloud present at all. Drift follows the loading.
+    ///
+    /// The mechanism is the one the chi factor already implies. Less CO2 is a less saturated band,
+    /// which leaves more unsaturated wing for the band to expand into as concentration rises -
+    /// pushing the response super-logarithmic, against the sub-logarithmic pull of the suppressed
+    /// wings. Near this loading the two roughly cancel, and the per-point coefficient rises before
+    /// it falls rather than falling throughout.
+    ///
+    /// This is asserted as an ordering with a wide margin rather than as two numbers, because the
+    /// point is which factor carries the effect, and that survives recalibration where the exact
+    /// percentages would not.
+    /// </remarks>
+    [TestMethod]
+    public void TheDriftFollowsTheGasLoadingRatherThanTheCloud()
+    {
+        double clearLoad = Co2Sweep.CalibratedAbsorberScale(0.0);
+        double cloudLoad = Co2Sweep.CalibratedAbsorberScale(Co2Sweep.CalibratedCloudFraction);
+
+        double? Drift(double loading, double cloud)
+        {
+            var configure = Co2Sweep.SpectralConfiguration(
+                absorberScale: loading, cloudFraction: cloud);
+
+            return configure is null ? null : LogarithmicFit(Co2Sweep.ForcingCurve(configure)).Drift;
+        }
+
+        double? clearSkyClearLoad = Drift(clearLoad, 0.0);
+        if (clearSkyClearLoad is null)
+        {
+            Assert.Inconclusive("no HITRAN line data; run scripts/fetch-hitran.ps1 -Molecule all.");
+            return;
+        }
+
+        double clearSkyCloudLoad = Drift(cloudLoad, 0.0)!.Value;
+        double cloudyClearLoad = Drift(clearLoad, Co2Sweep.CalibratedCloudFraction)!.Value;
+
+        Console.WriteLine(string.Format(Inv,
+            "  clear sky: {0:P2} at {1:F3}, {2:P2} at {3:F3}   ·   {4:P2} clouded at {1:F3}",
+            clearSkyClearLoad.Value, clearLoad, clearSkyCloudLoad, cloudLoad, cloudyClearLoad));
+
+        // The light loading drifts far less, in a clear sky - so the deck is not what does it.
+        Assert.IsTrue(clearSkyCloudLoad < 0.5 * clearSkyClearLoad.Value,
+            $"the light loading drifts {clearSkyCloudLoad:P2} against {clearSkyClearLoad.Value:P2} " +
+            "at the shipped loading, both under a clear sky; the gap should be large");
+
+        // And adding the deck at the shipped loading does not rescue it.
+        Assert.IsTrue(cloudyClearLoad > 2.0 * clearSkyCloudLoad,
+            $"a cloud deck at the shipped loading still drifts {cloudyClearLoad:P2}, so the deck " +
+            $"is not what takes the clouded configuration down to {clearSkyCloudLoad:P2}");
+    }
+
 }

@@ -696,6 +696,28 @@
       produce a very clean logarithm; suppressing it with a χ factor breaks that idealisation.
       The model was more logarithmic when it was more wrong.</p>
 
+    <p><strong>The drift is a sign flip, not a magnitude.</strong> Reading the fitted coefficient
+      at each concentration rather than its range says which way the departure runs, and χ
+      reverses it. Without χ the coefficient <em>rises</em> across the sweep, 6.97 to 7.37: a
+      Lorentzian wing decays slowly, so as the core saturates the band keeps expanding into wing
+      that is still thin, and the reachable area grows faster than logarithmically. With χ it
+      <em>falls</em>, 5.39 to 4.85 — the wing is cut back, so once the reachable part saturates
+      there is less fresh spectrum left and each doubling buys less than the last.</p>
+
+    <p>Two consequences follow, and both were checked. Widening the wing cutoff hands the band
+      more unsaturated wing, so it should drift less: 400 → 800 cm⁻¹ takes the drift from 10.1 %
+      to 8.2 %, which is the prediction made before the measurement rather than after it. And
+      because the two tendencies have opposite sign, <strong>a pure logarithm lies between
+      them</strong> — the model straddles the accepted law rather than missing it in one
+      direction.</p>
+
+    <p class="caveat">One candidate was tested and ruled out. Re-deriving the bands at every
+      concentration — the fix that rescued methane's response, where scaling a band's share
+      stretched its mean while its k-distribution went on describing the reference atmosphere —
+      does almost nothing here: 10.1 % becomes 10.0 %. It lowers the coefficient, from 4.717 to
+      4.534, but leaves the shape alone. Whatever sets CO<sub>2</sub>'s drift, it is not that
+      approximation.</p>
+
     <p>The grey configuration makes the contrast concrete. Given one opacity for the whole
       spectrum, its forcing ratio against the accepted law grows from 1.17 to 2.14 across the
       same concentration span, because its absorber is simply diluted rather than
@@ -1156,16 +1178,39 @@
       argument, measured rather than asserted.</p>
 
     <p>A cloud deck masks 4–7 % of the CO<sub>2</sub> forcing, the larger share at lower
-      concentrations — it already blocks part of
-      the upward flux the extra gas would have intercepted. The clouded response is also far
-      closer to a pure logarithm, but holding the base state fixed required dropping the gas
-      loading threefold, so cloud and loading moved together and that one is suggestive rather
-      than established.</p>
+      concentrations — it already blocks part of the upward flux the extra gas would have
+      intercepted.</p>
+
+    <p>The clouded response is also far closer to a pure logarithm, 1.2 % drift against 10.1 %.
+      That used to be recorded here as suggestive rather than established, because holding the
+      base state fixed under cloud required dropping the gas loading threefold, so cloud and
+      loading moved together. Crossing the two separates them.</p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>Drift of the fitted coefficient: each sky at each loading</caption>
+        <thead>
+          <tr><th></th><th class="n">loading 17.762</th><th class="n">loading 5.698</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Clear sky</td><td class="n">10.1 %</td><td class="n"><strong>1.6 %</strong></td></tr>
+          <tr><td>67 % cloud</td><td class="n">10.3 %</td><td class="n"><strong>1.2 %</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>It is the loading, not the deck.</strong> Drift follows the columns and ignores the
+      rows: the cloud&#8217;s light gas load under a clear sky drifts 1.6 % with no cloud present at
+      all, and the clear-sky load under a full deck still drifts 10.3 %. That also fits the
+      mechanism above — less CO<sub>2</sub> means a less saturated band, which leaves more
+      unsaturated wing to expand into and pushes back against χ&#8217;s sub-logarithmic pull. Both
+      low-drift cells show the coefficient rising and then falling, peaking near 500–580 ppm,
+      which is the crossover; both high-drift cells fall throughout.</p>
   </section>
 
   <section>
     <h2>How it is checked</h2>
-    <p>419 tests, and the ones worth naming are those that check the model against something
+    <p>420 tests, and the ones worth naming are those that check the model against something
       outside itself.</p>
 
     <ul class="plain">
@@ -1242,7 +1287,7 @@
   <footer>
     <p>18,451 lines of C# in 69 files — 6,190 of physics in
       <code>ClimateColumn.Core</code>, 39&nbsp;% of it comment, and 8,900 lines of tests.
-      419 tests pass. Longwave opacity is derived from HITRAN line data, which is not
+      420 tests pass. Longwave opacity is derived from HITRAN line data, which is not
       redistributed with the source.</p>
   </footer>
 
