@@ -32,6 +32,34 @@ public static class HitranLineList
     /// Intensity cutoff in HITRAN's units. A real band's line list has a long tail of extremely
     /// weak transitions that cost time and change nothing; 0 keeps every line.
     /// </param>
+    /// <summary>
+    /// As <see cref="Load"/>, but parsed once per file and reused.
+    /// </summary>
+    /// <remarks>
+    /// Line lists are read far more often than anyone intends. Every call to
+    /// <see cref="Co2Sweep.SpectralConfiguration"/> built its own, so a calibration that varies
+    /// the recipe re-parsed all six files - 14.4 MB - on every bisection step. One methane
+    /// calibration spent most of forty-five minutes doing it.
+    ///
+    /// Safe to share because a parsed list is immutable: <see cref="SpectralLine"/> is a record
+    /// and the array is handed out behind <see cref="IReadOnlyList{T}"/>. Concurrent callers are
+    /// expected - sweeps parallelise over concentrations - so the store is concurrent, and a
+    /// duplicate parse under contention wastes work without producing a wrong answer.
+    ///
+    /// Keyed on the file's last write time as well as its path, so editing or refetching a line
+    /// list invalidates the entry rather than silently serving the old one. That is the failure
+    /// this kind of cache usually introduces, and it costs one stat call to avoid.
+    /// </remarks>
+    public static IReadOnlyList<SpectralLine> LoadCached(string path, double minimumIntensity = 0.0)
+    {
+        var key = (Path.GetFullPath(path), minimumIntensity, File.GetLastWriteTimeUtc(path));
+        return Cache.GetOrAdd(key, k => Load(k.Item1, k.Item2));
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<
+        (string Path, double MinimumIntensity, DateTime Written),
+        IReadOnlyList<SpectralLine>> Cache = new();
+
     public static IReadOnlyList<SpectralLine> Load(string path, double minimumIntensity = 0.0)
     {
         if (!File.Exists(path)) throw new FileNotFoundException($"No HITRAN line list at {path}", path);

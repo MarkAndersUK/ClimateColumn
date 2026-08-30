@@ -455,7 +455,7 @@ public sealed class Co2Sweep
             string? path = HitranLineList.DefaultPath(file);
             if (path is null) return null;
 
-            lines.Add((HitranLineList.Load(path, minimumIntensity: 1e-26),
+            lines.Add((HitranLineList.LoadCached(path, minimumIntensity: 1e-26),
                 kind, share * scale, co2, file));
         }
 
