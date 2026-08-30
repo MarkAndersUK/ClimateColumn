@@ -291,6 +291,69 @@ public class MethaneTests
     }
 
     /// <summary>
+    /// The CO2 background a methane rise happens against, and what moving it does.
+    /// </summary>
+    /// <remarks>
+    /// Measured because the chart is drawn at pre-industrial CO2 and a reader could reasonably
+    /// take it to apply today. Raising the background to 1000 ppm raises methane's forcing by
+    /// about 8%, and the cause is worth separating from the obvious guess: it is <em>not</em>
+    /// spectral overlap. Holding the temperature profile fixed and adding CO2 to the path
+    /// changes methane's forcing by nothing at all - the two gases occupy 581-751 and
+    /// 1111-2000 cm^-1 respectively, and the chi factor suppresses CO2's wings by about 1e-4
+    /// before they reach methane's band. Pure Lorentzian wings would have overlapped.
+    ///
+    /// What moves it is the base state: 1000 ppm sits 4.2 K warmer, and a warmer column emits
+    /// more for the same methane to block.
+    ///
+    /// Not covered here: N2O is the other well-mixed gas in methane's bands and is not
+    /// dialable, so it is a fixed background rather than a measured non-overlap. The accepted
+    /// Myhre law carries an explicit CH4-N2O overlap term this model cannot produce.
+    /// </remarks>
+    [TestMethod]
+    public void ABiggerCarbonDioxideBackgroundRaisesMethanesForcing()
+    {
+        var low = MethaneSweep.Run(equilibrate: false, co2Ppm: 285.0);
+        var high = MethaneSweep.Run(equilibrate: false, co2Ppm: 1000.0);
+
+        if (low is null || high is null)
+        {
+            Assert.Inconclusive("no HITRAN line data; run scripts/fetch-hitran.ps1 -Molecule all.");
+            return;
+        }
+
+        int now = MethaneSweep.PresentDayIndex;
+        double ratio = high.Forcings[now] / low.Forcings[now];
+
+        Assert.IsTrue(ratio is > 1.02 and < 1.20,
+            $"a 1000 ppm background should raise methane's forcing by a few percent through the " +
+            $"warmer base state ({low.Forcings[now]:F4} to {high.Forcings[now]:F4}, {ratio:F3}x)");
+
+        // Both are still the same curve in shape - the background scales it, it does not bend it.
+        Assert.AreEqual(low.BestFit().Name, high.BestFit().Name,
+            "the forcing law should not depend on how much CO2 is in the column");
+    }
+
+    /// <summary>Default is pre-industrial CO2, which is what makes the sweep a single-gas law.</summary>
+    [TestMethod]
+    public void DefaultsToThePreIndustrialBackground()
+    {
+        var byDefault = MethaneSweep.Run(equilibrate: false);
+        var explicitly = MethaneSweep.Run(equilibrate: false, co2Ppm: Co2Sweep.Concentrations[0]);
+
+        if (byDefault is null || explicitly is null)
+        {
+            Assert.Inconclusive("no HITRAN line data; run scripts/fetch-hitran.ps1 -Molecule all.");
+            return;
+        }
+
+        for (int i = 0; i < byDefault.Points.Count; i++)
+        {
+            Assert.AreEqual(explicitly.Forcings[i], byDefault.Forcings[i], 1e-9,
+                $"the default background should be {Co2Sweep.Concentrations[0]:F0} ppm");
+        }
+    }
+
+    /// <summary>
     /// Methane's bands sit in the partly-saturated range, which is the regime that produces
     /// sqrt(M).
     /// </summary>

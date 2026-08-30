@@ -687,6 +687,70 @@
       accepted law — remains a genuine prediction.</p>
   </section>
 
+  <section class="key">
+    <h2>Both gases together</h2>
+    <p>CO<sub>2</sub> and methane have not risen independently, so a figure that moves one and
+      holds the other answers a question nobody is asking. Sweeping them together is a different
+      kind of calculation from everything above — <strong>it depends on an assumption about the
+      future, and the assumption does more work than the physics.</strong></p>
+
+    <p>The coupling used here is stated so it can be disagreed with. Below present day the
+      observed path is used: 285 ppm / 700 ppb to 421 ppm / 1920 ppb, a historical ratio of about
+      9 ppb per ppm. Above it, today's trends — CO<sub>2</sub> near 2.4 ppm a year and methane
+      near 8 ppb — give 3.3 ppb per ppm. Extrapolating today's ratio <em>backwards</em> would
+      contradict what actually happened, which is why the two halves differ.</p>
+
+    <p class="caveat">Every point beyond 421 ppm is an extrapolation of a current rate over
+      centuries, not a projection. Real methane has a decade-scale atmospheric lifetime and a
+      sink that responds to its own concentration; nothing here models either. Read the shape,
+      not the year it might correspond to.</p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>Equilibrium warming from the pre-industrial base state, both gases rising</caption>
+        <thead>
+          <tr><th class="n">CO₂</th><th class="n">CH₄</th><th class="n">both</th>
+              <th class="n">CO₂ alone</th><th class="n">methane's share</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="n">350</td><td class="n">1283</td><td class="n">+0.995 K</td><td class="n">+0.787 K</td><td class="n">21 %</td></tr>
+          <tr><td class="n">425</td><td class="n">1933</td><td class="n">+1.901 K</td><td class="n">+1.500 K</td><td class="n">21 %</td></tr>
+          <tr><td class="n">580</td><td class="n">2450</td><td class="n">+3.114 K</td><td class="n">+2.572 K</td><td class="n">17 %</td></tr>
+          <tr><td class="n">700</td><td class="n">2850</td><td class="n">+3.819 K</td><td class="n">+3.176 K</td><td class="n">17 %</td></tr>
+          <tr><td class="n">1000</td><td class="n">3850</td><td class="n"><strong>+5.104 K</strong></td><td class="n">+4.238 K</td><td class="n">17 %</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Methane contributes about a fifth of the early warming and a sixth by 1000 ppm — its share
+      falls as its own band saturates faster than CO<sub>2</sub>'s, which is the square root
+      against the logarithm showing up in a temperature rather than a forcing.</p>
+
+    <h3>The forcings add exactly</h3>
+    <p>Measured separately and together, at every point of the sweep:</p>
+
+    <div class="eq">
+      <span class="expr">F(both) − [ F(CO₂) + F(CH₄) ] = 0.0000 W m⁻²</span>
+      <span class="gloss">at all ten concentrations, to four decimal places</span>
+    </div>
+
+    <p>That is not a modelling convenience, it is a measurement, and it confirms independently
+      what the band structure says: CO<sub>2</sub> occupies 581–751 cm⁻¹ and methane 1111–2000,
+      and the χ factor suppresses CO<sub>2</sub>'s wings by about 10⁻⁴ before they reach
+      methane's band. Pure Lorentzian wings would have overlapped and the sum would not have
+      closed.</p>
+
+    <p>A related check, run for the same reason: raising the CO<sub>2</sub> background from 285 to
+      1000 ppm raises methane's own forcing by 8–9 %. Holding the temperature profile fixed and
+      adding only the CO<sub>2</sub> changes it by <em>nothing</em>, so that 8–9 % is the warmer
+      base state emitting more for the same methane to block, and not a spectral interaction.</p>
+
+    <p class="caveat">Not covered: N<sub>2</sub>O sits in methane's bands and is held fixed
+      throughout, so this establishes only that CO<sub>2</sub> does not overlap methane. The
+      accepted methane law carries an explicit CH<sub>4</sub>–N<sub>2</sub>O overlap term that
+      this model has no way to produce.</p>
+  </section>
+
   <section>
     <h2>Water vapour, and its feedback</h2>
     <p>Water vapour is the largest greenhouse gas in the column and the only absorber whose
@@ -906,6 +970,60 @@
   </section>
 
   <section class="key">
+    <h2>A configuration with nothing fitted</h2>
+    <p>Everything above runs on absorber amounts scaled by one common factor chosen to land the
+      surface at an Earth-like temperature. That factor is a fit, and it absorbs every deficiency
+      in the model at once, so none of them can be seen separately — and the surface temperature
+      is an input rather than a result.</p>
+
+    <p><code>EarthlikeConfiguration</code> removes it. Each gas gets the column density its
+      observed abundance implies, the optical depth follows from HITRAN&#8217;s own line strengths,
+      and the surface temperature is whatever comes out. The physical magnitude was always
+      present in the line data — <code>AbsorptionCoefficients</code> divides it away to work in
+      shape alone — so exposing it needed one property, not new physics.</p>
+
+    <div class="eq">
+      <span class="expr">tau = (band-mean cross-section, cm² per molecule) × (column, per cm²)</span>
+      <span class="gloss">285 ppm of CO₂ gives 6.12 × 10²¹ per cm², against the standard 6.1 × 10²¹</span>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <caption>The unfitted configuration against the calibrated one, and against Earth</caption>
+        <thead>
+          <tr><th></th><th class="n">nothing fitted</th><th class="n">calibrated</th><th class="n">Earth</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Surface temperature</td><td class="n">289.89 K</td><td class="n">286.80 K</td><td class="n">~288 K</td></tr>
+          <tr><td>Convective top</td><td class="n">10.83 km</td><td class="n">5.83 km</td><td class="n">~8–11 km</td></tr>
+          <tr><td>CO₂ coefficient A</td><td class="n">4.250</td><td class="n">4.738</td><td class="n">5.35</td></tr>
+          <tr><td>— against accepted</td><td class="n">0.794×</td><td class="n">0.886×</td><td class="n">1.00×</td></tr>
+          <tr><td>Drift across the sweep</td><td class="n">22.6 %</td><td class="n">9.9 %</td><td class="n">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>It reaches a better base state and a worse forcing.</strong> Within two kelvin of
+      Earth&#8217;s surface with no scale factor at all, and a tropopause height far closer to the
+      real one than the calibrated configuration manages — but a CO₂ coefficient further from the
+      accepted law, with more than double the drift.</p>
+
+    <p>The inventory says why. Water vapour carries <strong>98.8 %</strong> of the band-mean
+      optical depth at its observed column, where the fitted recipe gave it four times CO₂
+      rather than eighty-five times. CO₂&#8217;s band sits under far more water vapour than the
+      fitted version, which masks its forcing and does so increasingly with concentration. The
+      scale factor was never only setting the total — it was setting the <em>ratio between
+      gases</em>, and that ratio is what the coefficient depends on.</p>
+
+    <p class="caveat">Two things this configuration does not do, stated because they would
+      otherwise be silent. The water-vapour continuum is left out rather than carried over,
+      because the shipped continuum is a tuned number and importing it would put a fitted
+      parameter back into a configuration whose purpose is not to have one. And the vapour is a
+      fixed observed column rather than a Clausius–Clapeyron absorber, so there is no water
+      vapour feedback here at all. It is a parallel configuration, not a replacement.</p>
+  </section>
+
+  <section class="key">
     <h2>Results</h2>
     <div class="tablewrap">
       <table>
@@ -981,9 +1099,18 @@
     <ul class="plain">
       <li><strong>The absorber amounts are illustrative.</strong> They are scaled to reach an
         Earth-like surface, not taken from observed concentrations, so the CO<sub>2</sub>
-        column is not Earth's. The band is more saturated than the real one, and what that
-        does to the forcing coefficient has not been isolated — it is a genuine unknown inside
-        the quoted 0.89×.</li>
+        column is not Earth's. What that does to the forcing coefficient has not been isolated
+        and is a genuine unknown inside the quoted 0.89×.
+        <br><br>
+        What can be measured is how saturated the band ends up. In the 634–690 cm⁻¹ core the
+        hemispheric optical depth is 2160, and <em>all sixteen</em> of its g-points are
+        optically thick — the weakest is 89.5. Nothing in that band can respond to more
+        CO<sub>2</sub>; the whole forcing comes from the flanking bands and the far wings,
+        which is why the wing treatment dominated everything else.
+        <br><br>
+        Whether that is <em>more</em> saturated than the real atmosphere is not established
+        here. It would need a reference line-by-line calculation the model does not do, and the
+        derivation's amount units are arbitrary, so the scale factor cannot answer it either.</li>
       <li><strong>Line strengths are not temperature-scaled.</strong> Half-widths are, through
         HITRAN's n<sub>air</sub>, but intensities are used at their 296 K values because
         scaling them needs total internal partition sums. Line mixing, Voigt profiles, self

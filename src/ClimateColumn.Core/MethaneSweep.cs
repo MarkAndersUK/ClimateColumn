@@ -168,11 +168,17 @@ public sealed class MethaneSweep
     /// </param>
     public static MethaneSweep? Run(bool equilibrate = true, double cloudFraction = 0.0,
         double methaneShare = Co2Sweep.CalibratedMethaneShare,
-        double absorberScale = double.NaN, bool rederive = true)
+        double absorberScale = double.NaN, bool rederive = true,
+        double co2Ppm = double.NaN)
     {
         Func<double, ModelOptions>? At(double ppb) => Co2Sweep.SpectralConfiguration(
             absorberScale: absorberScale, cloudFraction: cloudFraction, methaneShare: methaneShare,
             methaneRatio: rederive ? ppb / Concentrations[0] : 1.0);
+
+        // The CO2 background the methane rise happens against. Pre-industrial by default, which
+        // is what makes the sweep comparable to the accepted single-gas law - but methane shares
+        // bands with CO2's far wings, so the background is not neutral and can be moved.
+        double background = double.IsNaN(co2Ppm) ? Co2Sweep.Concentrations[0] : co2Ppm;
 
         var configure = At(Concentrations[0]);
         if (configure is null) return null;
@@ -186,7 +192,7 @@ public sealed class MethaneSweep
         {
             // Re-derived bands already hold this concentration, so the dial stays at the
             // reference; otherwise the dial is what does the work.
-            var options = (rederive ? At(ppb)! : configure)(Co2Sweep.Concentrations[0]);
+            var options = (rederive ? At(ppb)! : configure)(background);
             options.MethaneConcentration = rederive ? Concentrations[0] : ppb;
             return options;
         }

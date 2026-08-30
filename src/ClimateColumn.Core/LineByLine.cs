@@ -256,6 +256,21 @@ public sealed class LineByLineBand
         return k;
     }
 
+    /// <summary>
+    /// Band-mean absorption cross-section at the reference state, cm^2 per molecule.
+    /// </summary>
+    /// <remarks>
+    /// This is the physical magnitude that <see cref="AbsorptionCoefficients"/> divides out. The
+    /// line strengths coming in are HITRAN's, in cm^-1/(molecule cm^-2), and a Lorentz profile
+    /// integrates to one over wavenumber, so the product is a cross-section - multiply it by a
+    /// column density in molecules per cm^2 and the result is a dimensionless optical depth.
+    ///
+    /// Exposed so a configuration can be built from real atmospheric abundances instead of from
+    /// a scale chosen to land the surface temperature. The normalised path is unchanged and
+    /// still the default; this is what the parallel physical configuration reads.
+    /// </remarks>
+    public double MeanCrossSection => BandMeanAtReference();
+
     private double? _referenceMean;
 
     private double BandMeanAtReference()
