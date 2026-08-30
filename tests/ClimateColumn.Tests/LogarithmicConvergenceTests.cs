@@ -87,7 +87,7 @@ public class LogarithmicConvergenceTests
         // Each row is appended as it is measured. The previous version of this study wrote only at
         // the end and lost everything when it was interrupted; at these resolutions a run is long
         // enough that partial results are worth having.
-        void Probe(int bands, int gPoints, bool rederive, double wingCutoff = 400.0)
+        void Probe(int bands, int gPoints, bool rederive, double wingCutoff = Co2Sweep.DefaultWingCutoff)
         {
             var configure = Co2Sweep.SpectralConfiguration(
                 bandCount: bands, gPoints: gPoints, rederive: rederive, wingCutoff: wingCutoff);
@@ -147,12 +147,16 @@ public class LogarithmicConvergenceTests
     /// These numbers moved when the sub-Lorentzian chi factor went in, and the move is the whole
     /// point of that change. With pure Lorentz wings the converged coefficient was about 6.95,
     /// or 1.30x the accepted 5.35 - the model over-forced by a third. Correcting the far wings
-    /// takes the shipped configuration to A = 4.84 and the widest cutoff to 5.06, so 0.90 to 0.95
-    /// times accepted. The far-wing shape really was the dominant error, as the cutoff sensitivity
-    /// had suggested it must be.
+    /// takes it to about 0.93 times accepted. The far-wing shape really was the dominant error,
+    /// as the cutoff sensitivity had suggested it must be.
+    ///
+    /// The cutoff then moved from 400 to 800 cm^-1, because the corrected chi coefficients have a
+    /// gentler far wing that 400 was truncating - see Co2Sweep.DefaultWingCutoff. Both absorber
+    /// scales were re-solved there, so these figures are quoted at that calibration and are not
+    /// comparable with ones measured at 400.
     ///
     /// <strong>The response is now less purely logarithmic, not more.</strong> Drift across the
-    /// sweep runs 8-10% where it used to run 2-5%. That is not a regression - it follows from
+    /// sweep runs 8-9% where it used to run 2-5%. That is not a regression - it follows from
     /// where the logarithm comes from. A pure exponential far wing gives an absorbing width
     /// W = 2a ln(k0 u) and hence exactly F proportional to ln(u); the Lorentzian wing is the
     /// idealisation that produces a clean logarithm, and suppressing it with a chi factor breaks
@@ -175,17 +179,16 @@ public class LogarithmicConvergenceTests
         Console.WriteLine(string.Format(Inv,
             "  drift {0:P3}  A = {1:F4} W/m2 per ln  R2 = {2:F7}", drift, coefficient, rSquared));
 
-        // Measured across resolutions with the chi factor in place: 4.84 shipped, 5.06 at an
-        // 800 cm^-1 cutoff, 4.87 at 32 bands and 4.87 at 32 g-points. The band is 4.84-5.06, so
-        // this brackets it with room for the calibration to shift slightly.
+// Measured at the 800 cm^-1 calibration: 4.952 shipped, and 5.171 at a 1600 cm^-1 cutoff
+        // held at the old loading. This brackets it with room for the calibration to shift.
         Assert.AreEqual(4.95, coefficient, 0.35,
-            $"the shipped coefficient is {coefficient:F3} W/m2 per ln against a converged 4.84-5.06 " +
+            $"the shipped coefficient is {coefficient:F3} W/m2 per ln against a measured 4.95 " +
             $"({coefficient / Co2Sweep.AcceptedForcingCoefficient:F3}x the accepted 5.35)");
 
-        Assert.IsTrue(drift < 0.12,
-            $"the fitted coefficient wanders {drift:P2} across the sweep; with the chi factor " +
-            "converged resolutions sit between 8% and 10%, so anything above 12% means something " +
-            "else has changed");
+        Assert.IsTrue(drift < 0.11,
+            $"the fitted coefficient wanders {drift:P2} across the sweep; at the 800 cm^-1 " +
+            "calibration converged resolutions sit near 8.3%, so anything above 11% means " +
+            "something else has changed");
 
         Assert.IsTrue(rSquared > 0.999,
             $"R^2 against a pure logarithm is only {rSquared:F7}");

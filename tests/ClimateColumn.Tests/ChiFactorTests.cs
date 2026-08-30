@@ -97,12 +97,12 @@ public class ChiFactorTests
 
     /// <summary>
     /// The correction has to bite where the forcing was coming from, or it would not have
-    /// changed anything. At the shipped 400 cm^-1 cutoff chi is about 3e-4.
+    /// changed anything. At 400 cm^-1 chi is about 3e-4 and at the shipped 800 about 1e-5.
     ///
-    /// It does not follow that the cutoff is converged. The published far wing decays with an
-    /// e-folding length of 118 cm^-1 against the 62 of the coefficients it replaced, so it
-    /// reaches further: opening the cutoff from 400 to 800 cm^-1 still moves the coefficient by
-    /// about 4 %, and only past 800 does it settle.
+    /// The published far wing decays with an e-folding length of 118 cm^-1 against the 62 of the
+    /// coefficients it replaced, so it reaches further - which is why the cutoff moved from 400
+    /// to 800. See Co2Sweep.DefaultWingCutoff: the step was worth about 4 % of the coefficient,
+    /// and the next doubling buys 0.3 %.
     /// </summary>
     [TestMethod]
     public void SuppressesTheFarWingsByOrdersOfMagnitude()

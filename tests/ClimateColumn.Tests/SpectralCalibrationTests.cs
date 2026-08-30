@@ -46,7 +46,7 @@ public class SpectralCalibrationTests
     public void CalibrateTheConvergedConfiguration()
     {
         const int bands = 16, gPoints = 16;
-        const double cut = 400.0;
+        const double cut = Co2Sweep.DefaultWingCutoff;
 
         var log = new List<string>();
 

@@ -635,19 +635,21 @@
     <h3>What the shortfall actually is: the wing cutoff</h3>
     <p>With the coefficients right, the remaining gap has a different and simpler cause. The
       corrected far wing decays as e<sup>−0.0085 s</sup>, an e-folding length of 118 cm⁻¹, where
-      the old one fell off in 62 cm⁻¹. A gentler wing reaches further, so the shipped 400 cm⁻¹
-      cutoff truncates more of it than it used to.</p>
+      the old one fell off in 62 cm⁻¹. A gentler wing reaches further, so the 400 cm⁻¹ cutoff
+      the model then used truncated more of it than it used to.</p>
 
     <div class="tablewrap">
       <table>
-        <caption>Corrected χ, absorber scale 17.762, A fitted by least squares through the origin
-          over all ten concentrations</caption>
+        <caption>The measurement that moved the cutoff. Corrected χ at the <em>old</em> 400 cm⁻¹
+          calibration — absorber scale 17.762 held fixed while the cutoff moved, so the series is
+          like-for-like in shape but is not the shipped configuration. A fitted by least squares
+          through the origin over all ten concentrations.</caption>
         <thead>
           <tr><th class="n">wing cutoff (cm⁻¹)</th><th class="n">A</th>
               <th class="n">vs accepted</th><th class="n">base T<sub>s</sub></th></tr>
         </thead>
         <tbody>
-          <tr><td class="n">400 (shipped)</td><td class="n">4.958</td><td class="n">0.927×</td>
+          <tr><td class="n">400 (the old default)</td><td class="n">4.958</td><td class="n">0.927×</td>
               <td class="n">286.781 K</td></tr>
           <tr><td class="n">800</td><td class="n">5.156</td><td class="n">0.964×</td>
               <td class="n">287.068 K</td></tr>
@@ -657,12 +659,32 @@
       </table>
     </div>
 
-    <p>It converges by 800 cm⁻¹ — the last doubling moves A by 0.3 % — on
-      <strong>0.966× the accepted law, within 3.4 %</strong>. The shipped 400 cm⁻¹ cutoff is
-      therefore no longer converged, and about four fifths of the apparent shortfall is that
-      truncation rather than anything spectroscopic. The cutoff is left at 400 because it is what
-      every other number in this document was measured at; changing it would mean re-running all
-      of them, and the honest thing in the meantime is to say what it costs.</p>
+    <p>It converges by 800 cm⁻¹ — the last doubling moves A by 0.3 % — so most of the apparent
+      shortfall was truncation rather than anything spectroscopic. <strong>The cutoff was
+      therefore moved to 800, and both absorber scales and the methane share re-solved
+      there</strong>, because the cutoff sets the band mean and so the effective loading as well
+      as the shape. At the new calibration the clear-sky coefficient is 4.952, or 0.926× the
+      accepted law, and the drift falls from 10.1 % to 8.3 %.</p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>Re-solved at the 800 cm⁻¹ cutoff</caption>
+        <thead>
+          <tr><th></th><th class="n">at 400</th><th class="n">at 800</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Absorber scale, clear</td><td class="n">17.7622</td><td class="n">17.5283</td></tr>
+          <tr><td>Absorber scale, 67 % cloud</td><td class="n">5.6982</td><td class="n">5.6738</td></tr>
+          <tr><td>Methane share</td><td class="n">0.00687</td><td class="n">0.00688</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The methane share barely moves because it is 0.07 % of the absorber recipe and so almost
+      decoupled from the base state; the scale comes down 1.3 %, which is the wider cutoff
+      absorbing more per unit absorber. Anything quoted at 400 cm⁻¹ elsewhere in this document is
+      labelled as such, because a number measured at one calibration is not comparable with one
+      measured at the other.</p>
   </section>
 
   <section class="key">
@@ -706,7 +728,8 @@
 
     <p>Two consequences follow, and both were checked. Widening the wing cutoff hands the band
       more unsaturated wing, so it should drift less: 400 → 800 cm⁻¹ takes the drift from 10.1 %
-      to 8.2 %, which is the prediction made before the measurement rather than after it. And
+      to 8.2 % at fixed loading, and to 8.3 % once the loading is re-solved there — the prediction
+      made before the measurement rather than after it, and what decided the cutoff. And
       because the two tendencies have opposite sign, <strong>a pure logarithm lies between
       them</strong> — the model straddles the accepted law rather than missing it in one
       direction.</p>
@@ -714,8 +737,8 @@
     <p class="caveat">One candidate was tested and ruled out. Re-deriving the bands at every
       concentration — the fix that rescued methane's response, where scaling a band's share
       stretched its mean while its k-distribution went on describing the reference atmosphere —
-      does almost nothing here: 10.1 % becomes 10.0 %. It lowers the coefficient, from 4.717 to
-      4.534, but leaves the shape alone. Whatever sets CO<sub>2</sub>'s drift, it is not that
+      did almost nothing: at the 400 cm⁻¹ calibration 10.1 % became 10.0 %, lowering the
+      coefficient from 4.717 to 4.534 and leaving the shape alone. Whatever sets CO<sub>2</sub>'s drift, it is not that
       approximation.</p>
 
     <p>The grey configuration makes the contrast concrete. Given one opacity for the whole
@@ -758,7 +781,7 @@
 
     <p>Fixing it is a two-knob problem: the share sets the forcing, the absorber scale sets the
       base state, and cutting methane removes absorber. Solved together, three passes, holding
-      the base state at 286.796 K.</p>
+      the base state at 286.80 K.</p>
 
     <h3>The shape was hidden by an approximation</h3>
     <p>With the amount right, the response came out nearly <strong>linear</strong> — flatter
@@ -892,7 +915,7 @@
       set up carefully. Freezing the vapour at its nominal loading gives a <em>different base
       state</em>, so the two runs would start 2 K apart and the comparison would measure that
       offset. The no-feedback configuration is therefore frozen at the feedback run's own base
-      air temperature, so both begin at exactly 286.796 K.</p>
+      air temperature, so both begin at exactly 286.80 K.</p>
 
     <p>Set up that way, the two produce <strong>identical forcings</strong> — to four decimal
       places — and different warmings. That identity is not a coincidence: instantaneous
@@ -1116,19 +1139,29 @@
           <tr><th></th><th class="n">nothing fitted</th><th class="n">calibrated</th><th class="n">Earth</th></tr>
         </thead>
         <tbody>
-          <tr><td>Surface temperature</td><td class="n">289.89 K</td><td class="n">286.80 K</td><td class="n">~288 K</td></tr>
+          <tr><td>Surface temperature</td><td class="n">291.57 K</td><td class="n">286.80 K</td><td class="n">~288 K</td></tr>
           <tr><td>Convective top</td><td class="n">10.83 km</td><td class="n">5.83 km</td><td class="n">~8–11 km</td></tr>
-          <tr><td>CO₂ coefficient A</td><td class="n">4.233</td><td class="n">4.717</td><td class="n">5.35</td></tr>
-          <tr><td>— against accepted</td><td class="n">0.791×</td><td class="n">0.882×</td><td class="n">1.00×</td></tr>
-          <tr><td>Drift across the sweep</td><td class="n">22.6 %</td><td class="n">10.1 %</td><td class="n">—</td></tr>
+          <tr><td>CO₂ coefficient A</td><td class="n">6.150</td><td class="n">4.952</td><td class="n">5.35</td></tr>
+          <tr><td>— against accepted</td><td class="n">1.150×</td><td class="n">0.926×</td><td class="n">1.00×</td></tr>
+          <tr><td>Drift across the sweep</td><td class="n">41.8 %</td><td class="n">8.3 %</td><td class="n">—</td></tr>
         </tbody>
       </table>
     </div>
 
-    <p><strong>It reaches a better base state and a worse forcing.</strong> Within two kelvin of
-      Earth&#8217;s surface with no scale factor at all, and a tropopause height far closer to the
-      real one than the calibrated configuration manages — but a CO₂ coefficient further from the
-      accepted law, with more than double the drift.</p>
+    <p><strong>It reaches a plausible base state and a much worse forcing.</strong> Within four
+      kelvin of Earth&#8217;s surface with no scale factor at all, and a tropopause height far closer
+      to the real one than the calibrated configuration manages — but a CO₂ coefficient that
+      overshoots the accepted law by 15 % and drifts five times as far.</p>
+
+    <p class="caveat"><strong>These numbers moved a long way when the wing cutoff opened to
+      800 cm⁻¹, and the reason is worth stating.</strong> The calibrated configuration has an
+      absorber scale that was re-solved at the new cutoff, so it absorbed the change. This one has
+      no free parameter by construction, so it took the extra absorption raw: the surface went
+      289.89 to 291.57 K and the coefficient 4.233 to 6.150, crossing from under-forcing to
+      over-forcing. Truncating at 400 cm⁻¹ had been cancelling part of this configuration&#8217;s
+      error against another — the same shape of accident as the uncorrected wings cancelling
+      against a hard cutoff. Removing one of two cancelling errors makes the survivor visible,
+      which is what a configuration with nothing fitted is for.</p>
 
     <p>The inventory says why. Water vapour carries <strong>98.8 %</strong> of the band-mean
       optical depth at its observed column, where the fitted recipe gave it four times CO₂
@@ -1140,9 +1173,11 @@
     <p>That ratio also makes this configuration <strong>almost indifferent to CO₂ spectroscopy</strong>,
       which is not what one would guess. Correcting the χ coefficients reshapes CO₂&#8217;s far wing
       and nothing else, and this is where CO₂ is most heavily overlain, so it looked like the place
-      the correction would bite hardest. It moved the coefficient from 4.250 to 4.233 and left the
-      base state, the convective top and the drift unchanged to the digit. When one gas carries
-      98.8 % of the opacity, the wing shape of a gas carrying 1.2 % is not what decides the answer.</p>
+      the correction would bite hardest. At the 400 cm⁻¹ cutoff it moved the coefficient from
+      4.250 to 4.233 and left the base state, the convective top and the drift unchanged to the
+      digit. When one gas carries 98.8 % of the opacity, the wing shape of a gas carrying 1.2 % is
+      not what decides the answer — though how far those wings are <em>integrated</em> very much
+      is, as the caveat below shows.</p>
 
     <p class="caveat">Two things this configuration does not do, stated because they would
       otherwise be silent. The water-vapour continuum is left out rather than carried over,
@@ -1156,25 +1191,25 @@
     <h2>Results</h2>
     <div class="tablewrap">
       <table>
-        <caption>Spectral configuration, 16 bands × 16 g-points, 400 cm⁻¹ wing cutoff, corrected with
+        <caption>Spectral configuration, 16 bands × 16 g-points, 800 cm⁻¹ wing cutoff, corrected with
           the published CO₂–N₂ ν₂ χ factor. A is the slope of a fit with an intercept, and drift is
           the spread of the per-point F/ln(C/C₀).</caption>
         <thead>
           <tr><th></th><th class="n">clear sky</th><th class="n">67 % cloud</th></tr>
         </thead>
         <tbody>
-          <tr><td>Absorber scale</td><td class="n">17.762</td><td class="n">5.698</td></tr>
-          <tr><td>Base surface temperature</td><td class="n">286.781 K</td><td class="n">286.793 K</td></tr>
-          <tr><td>Forcing at 580 ppm</td><td class="n">3.618 W m⁻²</td><td class="n">3.351 W m⁻²</td></tr>
-          <tr><td>Forcing at 1000 ppm</td><td class="n">6.082 W m⁻²</td><td class="n">5.852 W m⁻²</td></tr>
-          <tr><td>Fitted coefficient A</td><td class="n">4.717</td><td class="n">4.664</td></tr>
-          <tr><td>Against accepted 5.35</td><td class="n">0.882×</td><td class="n">0.872×</td></tr>
-          <tr><td>Drift across the sweep</td><td class="n">10.1 %</td><td class="n">1.2 %</td></tr>
-          <tr><td>Warming to 1000 ppm</td><td class="n">+4.22 K</td><td class="n">+3.42 K</td></tr>
-          <tr><td>— with vapour held fixed</td><td class="n">+2.23 K</td><td class="n">+2.48 K</td></tr>
-          <tr><td>Sensitivity</td><td class="n">0.710 K/W m⁻²</td><td class="n">0.586 K/W m⁻²</td></tr>
+          <tr><td>Absorber scale</td><td class="n">17.5283</td><td class="n">5.6738</td></tr>
+          <tr><td>Base surface temperature</td><td class="n">286.804 K</td><td class="n">286.801 K</td></tr>
+          <tr><td>Forcing at 580 ppm</td><td class="n">3.736 W m⁻²</td><td class="n">3.374 W m⁻²</td></tr>
+          <tr><td>Forcing at 1000 ppm</td><td class="n">6.355 W m⁻²</td><td class="n">5.909 W m⁻²</td></tr>
+          <tr><td>Fitted coefficient A</td><td class="n">4.952</td><td class="n">4.714</td></tr>
+          <tr><td>Against accepted 5.35</td><td class="n">0.926×</td><td class="n">0.881×</td></tr>
+          <tr><td>Drift across the sweep</td><td class="n">8.3 %</td><td class="n">0.9 %</td></tr>
+          <tr><td>Warming to 1000 ppm</td><td class="n">+4.43 K</td><td class="n">+3.46 K</td></tr>
+          <tr><td>— with vapour held fixed</td><td class="n">+2.32 K</td><td class="n">+2.50 K</td></tr>
+          <tr><td>Sensitivity</td><td class="n">0.713 K/W m⁻²</td><td class="n">0.587 K/W m⁻²</td></tr>
           <tr><td>Convective top, 285 → 1000 ppm</td><td class="n">5.83 → 5.83 km</td><td class="n">5.83 → 5.83 km</td></tr>
-          <tr><td>Emission-temperature level</td><td class="n">4.52 → 5.13 km</td><td class="n">4.24 → 4.75 km</td></tr>
+          <tr><td>Emission-temperature level</td><td class="n">4.52 → 5.16 km</td><td class="n">4.24 → 4.75 km</td></tr>
         </tbody>
       </table>
     </div>
@@ -1188,7 +1223,7 @@
       concentrations — it already blocks part of the upward flux the extra gas would have
       intercepted.</p>
 
-    <p>The clouded response is also far closer to a pure logarithm, 1.2 % drift against 10.1 %.
+    <p>The clouded response is also far closer to a pure logarithm, 0.9 % drift against 8.3 %.
       That used to be recorded here as suggestive rather than established, because holding the
       base state fixed under cloud required dropping the gas loading threefold, so cloud and
       loading moved together. Crossing the two separates them.</p>
@@ -1197,18 +1232,18 @@
       <table>
         <caption>Drift of the fitted coefficient: each sky at each loading</caption>
         <thead>
-          <tr><th></th><th class="n">loading 17.762</th><th class="n">loading 5.698</th></tr>
+          <tr><th></th><th class="n">loading 17.5283</th><th class="n">loading 5.6738</th></tr>
         </thead>
         <tbody>
-          <tr><td>Clear sky</td><td class="n">10.1 %</td><td class="n"><strong>1.6 %</strong></td></tr>
-          <tr><td>67 % cloud</td><td class="n">10.3 %</td><td class="n"><strong>1.2 %</strong></td></tr>
+          <tr><td>Clear sky</td><td class="n">8.3 %</td><td class="n"><strong>1.3 %</strong></td></tr>
+          <tr><td>67 % cloud</td><td class="n">8.9 %</td><td class="n"><strong>0.9 %</strong></td></tr>
         </tbody>
       </table>
     </div>
 
     <p><strong>It is the loading, not the deck.</strong> Drift follows the columns and ignores the
-      rows: the cloud&#8217;s light gas load under a clear sky drifts 1.6 % with no cloud present at
-      all, and the clear-sky load under a full deck still drifts 10.3 %. That also fits the
+      rows: the cloud&#8217;s light gas load under a clear sky drifts 1.3 % with no cloud present at
+      all, and the clear-sky load under a full deck still drifts 8.9 %. That also fits the
       mechanism above — less CO<sub>2</sub> means a less saturated band, which leaves more
       unsaturated wing to expand into and pushes back against χ&#8217;s sub-logarithmic pull. Both
       low-drift cells show the coefficient rising and then falling, peaking near 500–580 ppm,

@@ -95,7 +95,7 @@ public static class EarthlikeConfiguration
     /// </param>
     public static Func<double, ModelOptions>? Build(
         int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
-        double wingCutoff = 400.0, bool subLorentzianWings = true, double continuum = 0.0)
+        double wingCutoff = Co2Sweep.DefaultWingCutoff, bool subLorentzianWings = true, double continuum = 0.0)
     {
         // Column densities from observed abundances. Nothing here is adjustable to taste.
         var recipe = new (string File, AbsorberKind Kind, double Column, bool Co2)[]
@@ -156,7 +156,7 @@ public static class EarthlikeConfiguration
     /// The optical depth each gas contributes, for reporting what the configuration is made of.
     /// </summary>
     public static IReadOnlyList<(string Gas, double Column, double OpticalDepth)>? Inventory(
-        int samples = 80_000, double wingCutoff = 400.0, bool subLorentzianWings = true)
+        int samples = 80_000, double wingCutoff = Co2Sweep.DefaultWingCutoff, bool subLorentzianWings = true)
     {
         var rows = new List<(string, double, double)>();
 

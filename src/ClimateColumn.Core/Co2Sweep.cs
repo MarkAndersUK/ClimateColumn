@@ -40,6 +40,28 @@ public sealed class Co2Sweep
     /// <summary>Accepted CO2 forcing coefficient, W m^-2 per ln(C/C0).</summary>
     public const double AcceptedForcingCoefficient = 5.35;
 
+    /// <summary>
+    /// How far from each line centre the profile is integrated, cm^-1.
+    /// </summary>
+    /// <remarks>
+    /// <strong>This was 400 and had to move when the chi coefficients were corrected.</strong>
+    /// The published CO2-N2 nu_2 far wing decays with an e-folding length of 118 cm^-1, where the
+    /// unverified coefficients it replaced fell off in 62. A gentler wing reaches further, so a
+    /// cutoff that was converged against the old shape truncates real absorption under the new
+    /// one.
+    ///
+    /// Measured across the sweep, the forcing coefficient runs 4.958, 5.156 and 5.171 W m^-2 per
+    /// ln at cutoffs of 400, 800 and 1600 - so 400 was costing about 4 % of the coefficient, and
+    /// the last doubling past 800 buys 0.3 %. The drift from a pure logarithm falls from 10.1 %
+    /// to 8.2 % over the same step, for the reason set out in <see cref="ChiFactor"/>: a wider
+    /// cutoff leaves the band more unsaturated wing to expand into.
+    ///
+    /// Both calibrated absorber scales were re-solved here, because the cutoff sets the band mean
+    /// and so the effective loading as well as the shape. Anything comparing a number measured at
+    /// 400 with one measured here is comparing two calibrations.
+    /// </remarks>
+    public const double DefaultWingCutoff = 800.0;
+
     /// <summary>Cloud fraction the cloudy spectral configuration is calibrated at.</summary>
     public const double CalibratedCloudFraction = 0.67;
 
@@ -56,8 +78,13 @@ public sealed class Co2Sweep
     /// Solved jointly with <see cref="CalibratedAbsorberScale"/> and <em>in the re-derived
     /// mode</em>, which is what <see cref="MethaneSweep"/> now uses: the share sets the forcing,
     /// the scale sets the base state, and cutting methane removes absorber, so neither can be
-    /// chosen alone. Three passes converge on 0.00687 and 17.7622 with the base state held at
-    /// 286.7964 K and the forcing on 0.6167 W m^-2 against 0.6167 accepted.
+    /// chosen alone. Three passes converge on 0.00688 and 17.5283 with the base state held at
+    /// 286.804 K and the forcing on 0.6153 W m^-2 against 0.6167 accepted.
+    ///
+    /// Re-solved when the wing cutoff moved to 800 cm^-1 - see
+    /// <see cref="DefaultWingCutoff"/>. The share barely moved, 0.00687 to 0.00688, because it
+    /// is 0.07 % of the absorber recipe and so almost decoupled from the base state; the scale
+    /// came down 1.3 %, which is the wider cutoff absorbing more per unit absorber.
     ///
     /// Calibrated in one mode does not mean calibrated in the other. Scaling the band share
     /// instead of re-deriving gives a different magnitude at this share, which is why the two are
@@ -71,7 +98,7 @@ public sealed class Co2Sweep
     /// methane's is set by the forcing directly. Worth knowing when reading the two figures side
     /// by side.
     /// </remarks>
-    public const double CalibratedMethaneShare = 0.00687;
+    public const double CalibratedMethaneShare = 0.00688;
 
     /// <summary>
     /// Absorber scale that puts the spectral configuration's base state at an Earth-like
@@ -81,14 +108,14 @@ public sealed class Co2Sweep
     /// There are two, and there have to be. A cloud deck is a greenhouse agent in its own
     /// right, so a gas loading calibrated without one supplies that greenhouse twice when a
     /// deck is added, and the column runs about 15 K hot. Both values here put the base state
-    /// at the same 286.796 K, reached different ways: the cloud-free column does the whole
+    /// at the same 286.80 K, reached different ways: the cloud-free column does the whole
     /// greenhouse with gas, the cloudy one hands a third of it to the deck.
     ///
     /// Anything comparing the two must go through here rather than reusing one scale, or it
     /// will be comparing two different planets and calling the difference a cloud effect.
     /// </remarks>
     public static double CalibratedAbsorberScale(double cloudFraction) =>
-        cloudFraction > 0.0 ? 5.6982 : 17.7622;
+        cloudFraction > 0.0 ? 5.6738 : 17.5283;
 
     /// <summary>
     /// The sweeps a chart should show: the spectrally derived configuration alone, or nothing
@@ -391,7 +418,7 @@ public sealed class Co2Sweep
     /// </remarks>
     public static Co2Sweep? SpectralBands(
         int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
-        bool rederive = false, double wingCutoff = 400.0, double absorberScale = double.NaN,
+        bool rederive = false, double wingCutoff = DefaultWingCutoff, double absorberScale = double.NaN,
         bool waterVapourFeedback = true, double? fixedVapourTemperature = null,
         bool subLorentzianWings = true, double cloudFraction = 0.0,
         double methaneShare = CalibratedMethaneShare, double methaneRatio = 1.0)
@@ -424,7 +451,7 @@ public sealed class Co2Sweep
     /// </remarks>
     public static Func<double, ModelOptions>? SpectralConfiguration(
         int bandCount = 16, int gPoints = 16, int segmentCount = 30, int samples = 80_000,
-        bool rederive = false, double wingCutoff = 400.0, double absorberScale = double.NaN,
+        bool rederive = false, double wingCutoff = DefaultWingCutoff, double absorberScale = double.NaN,
         bool waterVapourFeedback = true, double? fixedVapourTemperature = null,
         bool subLorentzianWings = true, double cloudFraction = 0.0,
         double methaneShare = CalibratedMethaneShare, double methaneRatio = 1.0)
