@@ -312,7 +312,7 @@
   <header class="mast">
     <span class="eyebrow">Model reference</span>
     <h1>A one-dimensional radiative&#8209;convective atmospheric column</h1>
-    <p class="standfirst">17,200 lines of C# that march a 50&nbsp;km column of air to
+    <p class="standfirst">18,450 lines of C# that march a 50&nbsp;km column of air to
       radiative–convective equilibrium, with longwave opacity built from real HITRAN line
       data rather than a tuned grey constant — and with the far wings of CO<sub>2</sub>'s
       15&nbsp;µm band corrected for the sub-Lorentzian shape that sets its forcing.</p>
@@ -550,6 +550,13 @@
       the reassurance that it is a property of the spectroscopy and not of how much gas was
       put in.</p>
 
+    <p class="caveat">Those absorber scales are the ones this experiment was run at, not the
+      shipped values. The scale has since moved to 17.762 for an unrelated reason — methane's
+      amount was calibrated, which changed the total absorber — and the coefficient with it, to
+      4.738. The table is left as measured because its point is the <em>controlled comparison</em>
+      between three states, and restating it at today's loading would mean re-running all three
+      rather than editing one column.</p>
+
     <p class="caveat"><strong>A caveat that travels with these numbers.</strong> The
       functional form is Perrin &amp; Hartmann's; the coefficients are representative values
       for the CO<sub>2</sub> ν₂ band near 296 K and have <em>not</em> been checked against the
@@ -594,6 +601,90 @@
       same concentration span, because its absorber is simply diluted rather than
       spectrally resolved. There is no band core to saturate, so there is no logarithm to
       recover.</p>
+  </section>
+
+  <section class="key">
+    <h2>Methane, and why it obeys a different law</h2>
+    <p>CO<sub>2</sub> is not the only gas the model can dial. Methane can be raised above its
+      base value too, and it is a sharper test of the band machinery than CO<sub>2</sub> was —
+      because it should obey a <em>different law</em>, and nothing in the model knows that.</p>
+
+    <p>The law follows the band's saturation, and the algebra of the previous section gives all
+      three cases:</p>
+
+    <ul class="plain">
+      <li><strong>Optically thick</strong> — the core is saturated, only the wings respond,
+        and <em>F</em> ∝ ln(<em>C</em>). This is CO<sub>2</sub>'s 15 µm band.</li>
+      <li><strong>Partly saturated</strong> — extra gas pushes more of the band from
+        transparent to opaque, and <em>F</em> ∝ √<em>M</em>. This is methane's 7.7 µm band, and
+        it is the observed law: 0.036(√<em>M</em> − √<em>M</em><sub>0</sub>) with <em>M</em> in
+        ppb, from Myhre et al. (1998).</li>
+      <li><strong>Optically thin</strong> — nothing is blocking anything yet, absorption is
+        simply proportional to amount, and <em>F</em> ∝ <em>M</em>.</li>
+    </ul>
+
+    <p>So a model that produces a logarithm for CO<sub>2</sub> and a square root for methane,
+      out of the same machinery and without being told which is which, is demonstrating that the
+      band structure carries real information. That is what it does — but only after two
+      mistakes were corrected, and both are worth recording.</p>
+
+    <h3>The amount was never checked</h3>
+    <p>Methane's share of the absorber recipe was 0.2, chosen to sit sensibly among the other
+      gases and never compared with anything. At that loading the pre-industrial to present-day
+      rise forced 3.42 W m⁻² against an accepted 0.62 — five and a half times too much. The
+      recipe sets <em>relative</em> amounts, not observed abundances.</p>
+
+    <p>Fixing it is a two-knob problem: the share sets the forcing, the absorber scale sets the
+      base state, and cutting methane removes absorber. Solved together, three passes, holding
+      the base state at 286.796 K.</p>
+
+    <h3>The shape was hidden by an approximation</h3>
+    <p>With the amount right, the response came out nearly <strong>linear</strong> — flatter
+      than the observed square root, and over-predicting by 15 % at the top of the sweep.</p>
+
+    <p class="caveat">The obvious explanation was that the band had become optically thin. It is
+      recorded here because it was wrong, and measuring it was what showed that: methane's
+      hemispheric optical depth sits comfortably inside the partly-saturated range. Thinness was
+      not what flattened the response.</p>
+
+    <p>The real cause was the approximation used to dial the gas. Scaling a band's recorded
+      methane share stretches its <em>mean</em> optical depth while the k-distribution inside it
+      goes on describing an atmosphere holding the reference amount — so the saturation that
+      ought to develop in methane's strong lines never appears, and what is left is a small
+      linear perturbation on a background the other gases are setting. The project's own notes
+      warn about exactly this for CO<sub>2</sub>, which already had a re-derivation path.
+      Methane did not.</p>
+
+    <p>Re-deriving the bands at every concentration settles it:</p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>Residual of each law's best fit through the origin — smallest wins</caption>
+        <thead>
+          <tr><th></th><th class="n">√M</th><th class="n">ln M</th><th class="n">linear in M</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Scaled through the band share</td><td class="n">0.0236</td><td class="n">0.1202</td><td class="n"><strong>0.0033</strong></td></tr>
+          <tr><td>Re-derived per concentration</td><td class="n"><strong>0.0005</strong></td><td class="n">0.0247</td><td class="n">0.0457</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Re-derived and recalibrated, the square root beats a logarithm by fifty times and a
+      straight line by ninety. The physics was in the line data throughout; the approximation
+      was concealing it.</p>
+
+    <h3>The claim the calibration cannot manufacture</h3>
+    <p>The share was fitted at 1900 ppb and nowhere else. At 3500 ppb — far outside the
+      calibration — the model gives <strong>0.976×</strong> the accepted forcing, within 2.4 %.
+      Before re-derivation that figure was 1.15. A one-point calibration cannot produce
+      agreement at the far end; only the shape can.</p>
+
+    <p>What this costs is worth stating precisely, because it differs from CO<sub>2</sub>.
+      Methane's forcing <em>magnitude</em> is calibrated in and is not a prediction. Its
+      <em>shape</em> is predicted, and comes out right. CO<sub>2</sub> is the other way around:
+      its absorber scale is set by the base state, so its forcing coefficient — 0.886× the
+      accepted law — remains a genuine prediction.</p>
   </section>
 
   <section>
@@ -798,6 +889,14 @@
       curvature is produced entirely by band structure. The forcing coefficient that comes out
       of it is a measurement, reported as it falls.</p>
 
+    <p><strong>The two dialled gases are calibrated differently, and it matters.</strong>
+      CO<sub>2</sub>&#8217;s amount is set through the absorber scale, which is chosen against the
+      <em>base state</em> — so its forcing coefficient falls out afterwards as a genuine
+      prediction, 0.886× the accepted law. Methane&#8217;s share is set against its
+      <em>forcing</em> directly, so that magnitude is calibrated in and predicts nothing. What
+      methane still predicts is its shape, and the out-of-sample agreement at 3500 ppb is the
+      evidence that the shape is real rather than fitted.</p>
+
     <p>The distinction matters most for the headline comparison. Because the CO<sub>2</sub>
       forcing is measured in W m⁻² and compared against a law also expressed in W m⁻²,
       <strong>nothing is converted and no sensitivity is borrowed</strong>. Turning the
@@ -815,18 +914,18 @@
           <tr><th></th><th class="n">clear sky</th><th class="n">67 % cloud</th></tr>
         </thead>
         <tbody>
-          <tr><td>Absorber scale</td><td class="n">15.869</td><td class="n">5.142</td></tr>
+          <tr><td>Absorber scale</td><td class="n">17.762</td><td class="n">5.698</td></tr>
           <tr><td>Base surface temperature</td><td class="n">286.796 K</td><td class="n">286.796 K</td></tr>
-          <tr><td>Forcing at 580 ppm</td><td class="n">3.719 W m⁻²</td><td class="n">3.336 W m⁻²</td></tr>
-          <tr><td>Forcing at 1000 ppm</td><td class="n">6.238 W m⁻²</td><td class="n">5.854 W m⁻²</td></tr>
-          <tr><td>Fitted coefficient A</td><td class="n">4.839</td><td class="n">4.676</td></tr>
-          <tr><td>Against accepted 5.35</td><td class="n">0.904×</td><td class="n">0.874×</td></tr>
-          <tr><td>Drift across the sweep</td><td class="n">10.1 %</td><td class="n">1.1 %</td></tr>
-          <tr><td>Warming to 1000 ppm</td><td class="n">+4.35 K</td><td class="n">+3.45 K</td></tr>
-          <tr><td>— with vapour held fixed</td><td class="n">+2.33 K</td><td class="n">+2.54 K</td></tr>
-          <tr><td>Sensitivity</td><td class="n">0.708 K/W m⁻²</td><td class="n">0.592 K/W m⁻²</td></tr>
-          <tr><td>Convective top, 285 → 1000 ppm</td><td class="n">4.17 → 5.83 km</td><td class="n">5.83 → 5.83 km</td></tr>
-          <tr><td>Emission-temperature level</td><td class="n">4.53 → 5.17 km</td><td class="n">4.24 → 4.76 km</td></tr>
+          <tr><td>Forcing at 580 ppm</td><td class="n">3.629 W m⁻²</td><td class="n">3.354 W m⁻²</td></tr>
+          <tr><td>Forcing at 1000 ppm</td><td class="n">6.106 W m⁻²</td><td class="n">5.858 W m⁻²</td></tr>
+          <tr><td>Fitted coefficient A</td><td class="n">4.738</td><td class="n">4.670</td></tr>
+          <tr><td>Against accepted 5.35</td><td class="n">0.886×</td><td class="n">0.873×</td></tr>
+          <tr><td>Drift across the sweep</td><td class="n">9.9 %</td><td class="n">1.1 %</td></tr>
+          <tr><td>Warming to 1000 ppm</td><td class="n">+4.24 K</td><td class="n">+3.43 K</td></tr>
+          <tr><td>— with vapour held fixed</td><td class="n">+2.23 K</td><td class="n">+2.48 K</td></tr>
+          <tr><td>Sensitivity</td><td class="n">0.711 K/W m⁻²</td><td class="n">0.587 K/W m⁻²</td></tr>
+          <tr><td>Convective top, 285 → 1000 ppm</td><td class="n">5.83 → 5.83 km</td><td class="n">5.83 → 5.83 km</td></tr>
+          <tr><td>Emission-temperature level</td><td class="n">4.52 → 5.14 km</td><td class="n">4.24 → 4.75 km</td></tr>
         </tbody>
       </table>
     </div>
@@ -845,7 +944,7 @@
 
   <section>
     <h2>How it is checked</h2>
-    <p>381 tests, and the ones worth naming are those that check the model against something
+    <p>403 tests, and the ones worth naming are those that check the model against something
       outside itself.</p>
 
     <ul class="plain">
@@ -884,7 +983,7 @@
         Earth-like surface, not taken from observed concentrations, so the CO<sub>2</sub>
         column is not Earth's. The band is more saturated than the real one, and what that
         does to the forcing coefficient has not been isolated — it is a genuine unknown inside
-        the quoted 0.90×.</li>
+        the quoted 0.89×.</li>
       <li><strong>Line strengths are not temperature-scaled.</strong> Half-widths are, through
         HITRAN's n<sub>air</sub>, but intensities are used at their 296 K values because
         scaling them needs total internal partition sums. Line mixing, Voigt profiles, self
@@ -911,9 +1010,9 @@
       taken on trust.</p>
   </section>
   <footer>
-    <p>17,198 lines of C# in 63 files — 5,788 of physics in
-      <code>ClimateColumn.Core</code>, 39&nbsp;% of it comment, and 8,521 lines of tests.
-      381 tests pass. Longwave opacity is derived from HITRAN line data, which is not
+    <p>18,451 lines of C# in 69 files — 6,190 of physics in
+      <code>ClimateColumn.Core</code>, 39&nbsp;% of it comment, and 8,900 lines of tests.
+      403 tests pass. Longwave opacity is derived from HITRAN line data, which is not
       redistributed with the source.</p>
   </footer>
 
