@@ -24,7 +24,7 @@ namespace ClimateColumn.Core;
 /// physical decay, two errors cancelling.
 ///
 /// <strong>The form</strong> is the three-segment exponential of Perrin and Hartmann (1989),
-/// which is the standard empirical treatment of the CO2 nu_2 band:
+/// which is the standard empirical treatment of CO2 far wings:
 /// <code>
 /// chi(s) = 1                                                     s &lt;= s1
 /// chi(s) = exp(-B1 (s - s1))                                     s1 &lt; s &lt;= s2
@@ -34,14 +34,21 @@ namespace ClimateColumn.Core;
 /// with <c>s = |nu - nu_0|</c> in cm^-1. It is continuous at every breakpoint by construction,
 /// equal to one inside the impact region, and monotonically decreasing outside it.
 ///
-/// <strong>A caveat that must travel with the numbers.</strong> The functional form above is
-/// Perrin and Hartmann's. The default coefficients are representative values for the CO2 nu_2
-/// band near 296 K, and they have <em>not</em> been checked against the original paper in this
-/// work - so treat this as a correctly shaped sub-Lorentzian correction rather than as a
-/// faithful reproduction of a published fit. They are constructor parameters precisely so that
-/// anyone holding the paper can put the exact values in and re-run the measurement. Nothing here
-/// is tuned to make the forcing match 5.35; whatever coefficient comes out is reported as
-/// measured, which is the only way the forcing stays a prediction rather than a calibration.
+/// <strong>Which band the coefficients belong to matters, and it caught this model out.</strong>
+/// Perrin and Hartmann's own 1989 measurement is of the <em>4.3 um nu_3</em> band of CO2 in N2,
+/// not the 15 um nu_2 band this model absorbs in. The functional form above is general and is
+/// theirs; the coefficients are per band and per collision partner, and using one band's numbers
+/// for another is not a small error - the segment boundaries alone differ by a factor of two.
+/// This type previously carried a set of nu_2 coefficients its own comments described as
+/// unverified, and they turned out to match no published set.
+///
+/// <see cref="CarbonDioxideNu2InNitrogen"/> now carries measured nu_2 CO2-N2 values, which are
+/// the ones an Earth-like column wants: the absorber is CO2 at trace concentration in a bath of
+/// N2, so N2 is what broadens its lines.
+///
+/// <strong>Nothing here is tuned to make the forcing match 5.35.</strong> The coefficients are
+/// the published fit, and whatever forcing comes out is reported as measured - which is the only
+/// way it stays a prediction rather than a calibration.
 ///
 /// The correction is applied to CO2 alone. Chi factors are band- and molecule-specific, and
 /// this one is for the CO2 nu_2 band; applying it to water vapour or ozone would be inventing
@@ -56,12 +63,41 @@ public sealed record ChiFactor(
     double ThirdDecay)
 {
     /// <summary>
-    /// Representative Perrin-Hartmann coefficients for the CO2 nu_2 band near 296 K. See the
-    /// caveat on this type: the shape is theirs, the exact numbers are unverified here.
+    /// The nu_2 (15 um) band of CO2 broadened by N2, at a given temperature.
     /// </summary>
-    public static readonly ChiFactor CarbonDioxideNu2 = new(
-        FirstBreak: 3.0, SecondBreak: 30.0, ThirdBreak: 120.0,
-        FirstDecay: 0.0888, SecondDecay: 0.0232, ThirdDecay: 0.0160);
+    /// <remarks>
+    /// Boundaries 3 / 50 / 180 cm^-1, and B_i(T) = alpha + beta exp(-gamma T), are the measured
+    /// CO2-N2 nu_2 values tabulated by Chaverot et al. (2025), A&amp;A 702, A137, Tables 2 and 3,
+    /// in the Perrin-Hartmann form. That paper is a deliberate update of the older factors rather
+    /// than a restatement of them, and Hartmann is among its authors.
+    ///
+    /// The default temperature is 296 K, matching the temperature at which this model uses
+    /// HITRAN's line strengths. One temperature for the whole column is a simplification - a real
+    /// column's chi varies with height - but it is the same simplification already made for the
+    /// line strengths, so it adds no new inconsistency.
+    /// </remarks>
+    public static ChiFactor CarbonDioxideNu2InNitrogen(double temperature = 296.0) => new(
+        FirstBreak: 3.0, SecondBreak: 50.0, ThirdBreak: 180.0,
+        FirstDecay: 0.065 + 0.038 * Math.Exp(-0.003 * temperature),
+        SecondDecay: 0.018 + 0.055 * Math.Exp(-0.020 * temperature),
+        ThirdDecay: 0.0085);
+
+    /// <summary>
+    /// The nu_2 band of CO2 broadened by CO2 itself - a pure-CO2 atmosphere, not Earth's.
+    /// </summary>
+    /// <remarks>
+    /// Kept because the difference between the two is the point: same band, same table, a
+    /// different collision partner, and boundaries of 3 / 30 / 150 rather than 3 / 50 / 180. A
+    /// chi factor is not a property of the absorber alone.
+    /// </remarks>
+    public static ChiFactor CarbonDioxideNu2InCarbonDioxide(double temperature = 296.0) => new(
+        FirstBreak: 3.0, SecondBreak: 30.0, ThirdBreak: 150.0,
+        FirstDecay: 0.085 + 1.962 * Math.Exp(-0.020 * temperature),
+        SecondDecay: 0.0185,
+        ThirdDecay: 0.011);
+
+    /// <summary>The factor this model applies to CO2: its band, broadened by the air around it.</summary>
+    public static readonly ChiFactor CarbonDioxideNu2 = CarbonDioxideNu2InNitrogen();
 
     /// <summary>No correction: the pure Lorentz profile the model used before.</summary>
     public static readonly ChiFactor None = new(
@@ -69,7 +105,7 @@ public sealed record ChiFactor(
         ThirdBreak: double.PositiveInfinity,
         FirstDecay: 0.0, SecondDecay: 0.0, ThirdDecay: 0.0);
 
-    /// <summary>The multiplier at a detuning of <paramref name="offset"/> cm^-1 from line centre.</summary>
+    /// <summary>The multiplier at a detuning of <paramref name='offset'/> cm^-1 from line centre.</summary>
     public double At(double offset)
     {
         double s = Math.Abs(offset);

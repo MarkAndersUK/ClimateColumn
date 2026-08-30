@@ -516,7 +516,7 @@
 
     <div class="eq">
       <span class="expr">χ(s) = exp[ −B₁(s−s₁) − B₂(s−s₂)<sup>+</sup> − B₃(s−s₃)<sup>+</sup> ]</span>
-      <span class="gloss">s = |ν − ν₀|, breakpoints at 3, 30 and 120 cm⁻¹, continuous at each</span>
+      <span class="gloss">s = |ν − ν₀|, breakpoints at 3, 50 and 180 cm⁻¹, continuous at each</span>
     </div>
 
     <p>It is applied to <strong>CO<sub>2</sub> alone</strong>. A χ factor is fitted to one
@@ -551,18 +551,118 @@
       put in.</p>
 
     <p class="caveat">Those absorber scales are the ones this experiment was run at, not the
-      shipped values. The scale has since moved to 17.762 for an unrelated reason — methane's
-      amount was calibrated, which changed the total absorber — and the coefficient with it, to
-      4.738. The table is left as measured because its point is the <em>controlled comparison</em>
-      between three states, and restating it at today's loading would mean re-running all three
-      rather than editing one column.</p>
+      shipped values, and the coefficients above predate both the methane calibration and the
+      correction to the &#967; coefficients described below. The table is left as measured because
+      its point is the <em>controlled comparison</em> between three states; restating it would mean
+      re-running all three rather than editing one column. The current numbers are in the results
+      table at the end.</p>
 
-    <p class="caveat"><strong>A caveat that travels with these numbers.</strong> The
-      functional form is Perrin &amp; Hartmann's; the coefficients are representative values
-      for the CO<sub>2</sub> ν₂ band near 296 K and have <em>not</em> been checked against the
-      original paper. This is a correctly shaped correction rather than a faithful
-      reproduction of a published fit. Nothing was tuned to reach 5.35 — the coefficient is
-      reported as it came out, which is the only way the forcing stays a prediction.</p>
+    <p class="caveat">One thing the loading column does <em>not</em> explain, and it is worth
+      saying because it is the obvious suspicion. Raising the absorber scale does not push the
+      coefficient down: measured directly, 15.869 gives 4.956 and 17.762 gives 4.975, and halving
+      the loading to 8.881 <em>lowers</em> it to 4.788. (Those three were measured together before
+      the &#967; correction below and with a through-origin fit, so they are comparable with each
+      other rather than with the results table; the point is the ordering, which the correction
+      does not touch.) Extra overlying water vapour masking
+      CO<sub>2</sub> is a real mechanism &mdash; it is what the unfitted configuration below
+      demonstrates, where vapour carries 98.8&nbsp;% of the optical depth against
+      CO<sub>2</sub>&#8217;s 1.2&nbsp;% &mdash; but at this recipe&#8217;s four-to-one ratio it is
+      not what sets the coefficient.</p>
+
+    <h3>The coefficients were checked against the literature, and were wrong</h3>
+    <p>The paragraph that used to sit here said the coefficients were representative values that
+      had not been checked against the original paper. They have now been checked, and
+      <strong>they were wrong in two separate ways.</strong></p>
+
+    <p><strong>The citation was to the wrong band.</strong> Perrin &amp; Hartmann (1989) —
+      <em>JQSRT</em> <strong>42</strong>(4), 311–317 — measures the far wings of the
+      <strong>4.3 µm ν₃</strong> band of CO<sub>2</sub> in N<sub>2</sub>. It is not a 15 µm ν₂
+      result at all. The three-segment functional form above is general and is genuinely theirs,
+      but the coefficients are fitted per band <em>and</em> per collision partner, and one band&#8217;s
+      numbers are not transferable to another. Oxford&#8217;s RFM, a production 15 µm line-by-line
+      model, cites Cousin <em>et al.</em> (1985) for its χ factor rather than Perrin &amp;
+      Hartmann — the same point seen from the other side.</p>
+
+    <p><strong>The numbers themselves matched no published set.</strong> The current tabulation is
+      Chaverot <em>et al.</em> (2025), <em>A&amp;A</em> <strong>702</strong>, A137, whose author
+      list includes Hartmann and which is an explicit update of the older factors. Its Table 1
+      confirms the functional form used here is exactly right. Its Tables 2 and 3 also show that
+      the B coefficients are <strong>temperature dependent</strong>,
+      <span class="expr">B<sub>i</sub>(T) = α<sub>i</sub> + β<sub>i</sub> exp(−γ<sub>i</sub>T)</span>,
+      for which this model previously had no term at all.</p>
+
+    <p>The relevant column is CO<sub>2</sub>–N<sub>2</sub>, ν₂: the absorber here is
+      CO<sub>2</sub> at trace concentration in a bath of nitrogen, so nitrogen is what broadens
+      its lines.</p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>What the model carried, against the measured CO₂–N₂ ν₂ values at 296 K</caption>
+        <thead>
+          <tr><th></th><th class="n">was</th><th class="n">published</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>s₁ / s₂ / s₃ (cm⁻¹)</td><td class="n">3 / 30 / 120</td>
+              <td class="n">3 / 50 / 180</td></tr>
+          <tr><td>B₁</td><td class="n">0.0888</td><td class="n">0.0806</td></tr>
+          <tr><td>B₂</td><td class="n">0.0232</td><td class="n">0.0181</td></tr>
+          <tr><td>B₃</td><td class="n">0.0160</td><td class="n"><strong>0.0085</strong></td></tr>
+          <tr><td>temperature dependence</td><td class="n">none</td>
+              <td class="n">α + β e<sup>−γT</sup></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>The error ran in both directions, which is why guessing its sign would have been
+      wrong.</strong> Because s₂ was 30 rather than 50, the steep first decay stopped twenty cm⁻¹
+      too early and the gentler second segment took over too soon: the old χ was
+      <strong>2.5× too weak</strong> at 50 cm⁻¹ and stayed about twice too weak out to 250. Past
+      roughly 300 cm⁻¹ the doubled B₃ took over in the other direction and it became too
+      <em>strong</em> — 0.39× the published value at 400 cm⁻¹. Both errors sat inside the wing
+      cutoff, in the region that supplies the logarithm.</p>
+
+    <p class="caveat"><strong>And correcting them barely moved the answer.</strong> The
+      coefficient went from 4.975 to 4.958 W m⁻² per ln — the two errors very nearly cancelled.
+      That is worth stating plainly because the obvious hypothesis, that unverified coefficients
+      were over-suppressing the wings and causing the model to under-force, is <em>false</em>.
+      The correction was worth making because it is right, not because it changed the result.</p>
+
+    <p class="caveat">One simplification remains, now visible rather than hidden. The published χ
+      is applied per collision partner and weighted by that partner&#8217;s share of the line width;
+      this model applies a single χ. For an atmosphere whose broadening is overwhelmingly by air
+      that is the right approximation, but it is an approximation.</p>
+
+    <h3>What the shortfall actually is: the wing cutoff</h3>
+    <p>With the coefficients right, the remaining gap has a different and simpler cause. The
+      corrected far wing decays as e<sup>−0.0085 s</sup>, an e-folding length of 118 cm⁻¹, where
+      the old one fell off in 62 cm⁻¹. A gentler wing reaches further, so the shipped 400 cm⁻¹
+      cutoff truncates more of it than it used to.</p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>Corrected χ, absorber scale 17.762, A fitted by least squares through the origin
+          over all ten concentrations</caption>
+        <thead>
+          <tr><th class="n">wing cutoff (cm⁻¹)</th><th class="n">A</th>
+              <th class="n">vs accepted</th><th class="n">base T<sub>s</sub></th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="n">400 (shipped)</td><td class="n">4.958</td><td class="n">0.927×</td>
+              <td class="n">286.781 K</td></tr>
+          <tr><td class="n">800</td><td class="n">5.156</td><td class="n">0.964×</td>
+              <td class="n">287.068 K</td></tr>
+          <tr><td class="n">1600</td><td class="n">5.171</td><td class="n">0.966×</td>
+              <td class="n">287.109 K</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>It converges by 800 cm⁻¹ — the last doubling moves A by 0.3 % — on
+      <strong>0.966× the accepted law, within 3.4 %</strong>. The shipped 400 cm⁻¹ cutoff is
+      therefore no longer converged, and about four fifths of the apparent shortfall is that
+      truncation rather than anything spectroscopic. The cutoff is left at 400 because it is what
+      every other number in this document was measured at; changing it would mean re-running all
+      of them, and the honest thing in the meantime is to say what it costs.</p>
   </section>
 
   <section class="key">
@@ -736,8 +836,8 @@
 
     <p>That is not a modelling convenience, it is a measurement, and it confirms independently
       what the band structure says: CO<sub>2</sub> occupies 581–751 cm⁻¹ and methane 1111–2000,
-      and the χ factor suppresses CO<sub>2</sub>'s wings by about 10⁻⁴ before they reach
-      methane's band. Pure Lorentzian wings would have overlapped and the sum would not have
+      and by the 360 cm⁻¹ of detuning between them the χ factor has suppressed
+      CO<sub>2</sub>'s wings to 5×10⁻⁴ of their Lorentzian value. Pure Lorentzian wings would have overlapped and the sum would not have
       closed.</p>
 
     <p>A related check, run for the same reason: raising the CO<sub>2</sub> background from 285 to
@@ -1027,23 +1127,25 @@
     <h2>Results</h2>
     <div class="tablewrap">
       <table>
-        <caption>Spectral configuration, 16 bands × 16 g-points, 400 cm⁻¹ wing cutoff, χ-corrected</caption>
+        <caption>Spectral configuration, 16 bands × 16 g-points, 400 cm⁻¹ wing cutoff, corrected with
+          the published CO₂–N₂ ν₂ χ factor. A is the slope of a fit with an intercept, and drift is
+          the spread of the per-point F/ln(C/C₀).</caption>
         <thead>
           <tr><th></th><th class="n">clear sky</th><th class="n">67 % cloud</th></tr>
         </thead>
         <tbody>
           <tr><td>Absorber scale</td><td class="n">17.762</td><td class="n">5.698</td></tr>
-          <tr><td>Base surface temperature</td><td class="n">286.796 K</td><td class="n">286.796 K</td></tr>
-          <tr><td>Forcing at 580 ppm</td><td class="n">3.629 W m⁻²</td><td class="n">3.354 W m⁻²</td></tr>
-          <tr><td>Forcing at 1000 ppm</td><td class="n">6.106 W m⁻²</td><td class="n">5.858 W m⁻²</td></tr>
-          <tr><td>Fitted coefficient A</td><td class="n">4.738</td><td class="n">4.670</td></tr>
-          <tr><td>Against accepted 5.35</td><td class="n">0.886×</td><td class="n">0.873×</td></tr>
-          <tr><td>Drift across the sweep</td><td class="n">9.9 %</td><td class="n">1.1 %</td></tr>
-          <tr><td>Warming to 1000 ppm</td><td class="n">+4.24 K</td><td class="n">+3.43 K</td></tr>
+          <tr><td>Base surface temperature</td><td class="n">286.781 K</td><td class="n">286.793 K</td></tr>
+          <tr><td>Forcing at 580 ppm</td><td class="n">3.618 W m⁻²</td><td class="n">3.351 W m⁻²</td></tr>
+          <tr><td>Forcing at 1000 ppm</td><td class="n">6.082 W m⁻²</td><td class="n">5.852 W m⁻²</td></tr>
+          <tr><td>Fitted coefficient A</td><td class="n">4.717</td><td class="n">4.664</td></tr>
+          <tr><td>Against accepted 5.35</td><td class="n">0.882×</td><td class="n">0.872×</td></tr>
+          <tr><td>Drift across the sweep</td><td class="n">10.1 %</td><td class="n">1.2 %</td></tr>
+          <tr><td>Warming to 1000 ppm</td><td class="n">+4.22 K</td><td class="n">+3.42 K</td></tr>
           <tr><td>— with vapour held fixed</td><td class="n">+2.23 K</td><td class="n">+2.48 K</td></tr>
-          <tr><td>Sensitivity</td><td class="n">0.711 K/W m⁻²</td><td class="n">0.587 K/W m⁻²</td></tr>
+          <tr><td>Sensitivity</td><td class="n">0.710 K/W m⁻²</td><td class="n">0.586 K/W m⁻²</td></tr>
           <tr><td>Convective top, 285 → 1000 ppm</td><td class="n">5.83 → 5.83 km</td><td class="n">5.83 → 5.83 km</td></tr>
-          <tr><td>Emission-temperature level</td><td class="n">4.52 → 5.14 km</td><td class="n">4.24 → 4.75 km</td></tr>
+          <tr><td>Emission-temperature level</td><td class="n">4.52 → 5.13 km</td><td class="n">4.24 → 4.75 km</td></tr>
         </tbody>
       </table>
     </div>
@@ -1053,7 +1155,8 @@
       warmer than that level by the lapse rate times its height. That is the greenhouse
       argument, measured rather than asserted.</p>
 
-    <p>A cloud deck masks about 6 % of the CO<sub>2</sub> forcing — it already blocks part of
+    <p>A cloud deck masks 4–7 % of the CO<sub>2</sub> forcing, the larger share at lower
+      concentrations — it already blocks part of
       the upward flux the extra gas would have intercepted. The clouded response is also far
       closer to a pure logarithm, but holding the base state fixed required dropping the gas
       loading threefold, so cloud and loading moved together and that one is suggestive rather
@@ -1062,7 +1165,7 @@
 
   <section>
     <h2>How it is checked</h2>
-    <p>403 tests, and the ones worth naming are those that check the model against something
+    <p>419 tests, and the ones worth naming are those that check the model against something
       outside itself.</p>
 
     <ul class="plain">
@@ -1139,7 +1242,7 @@
   <footer>
     <p>18,451 lines of C# in 69 files — 6,190 of physics in
       <code>ClimateColumn.Core</code>, 39&nbsp;% of it comment, and 8,900 lines of tests.
-      403 tests pass. Longwave opacity is derived from HITRAN line data, which is not
+      419 tests pass. Longwave opacity is derived from HITRAN line data, which is not
       redistributed with the source.</p>
   </footer>
 

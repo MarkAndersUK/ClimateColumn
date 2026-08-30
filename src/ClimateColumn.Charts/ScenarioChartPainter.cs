@@ -6,10 +6,6 @@ using ClimateColumn.Core;
 
 namespace ClimateColumn.Charts;
 
-/// <summary>One point of a coupled CO2 and methane scenario.</summary>
-public readonly record struct ScenarioPoint(
-    double Ppm, double Ppb, double WarmingBoth, double WarmingCo2Only);
-
 /// <summary>
 /// Draws the surface warming of a coupled CO2 and methane scenario, with methane's share of it
 /// shown as the gap between two curves.

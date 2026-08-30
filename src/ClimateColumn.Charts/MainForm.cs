@@ -23,6 +23,8 @@ namespace ClimateColumn.Charts;
 public sealed class MainForm : Form
 {
     private readonly Co2ChartView _chart = new() { Dock = DockStyle.Fill };
+    private readonly ScenarioView _scenario = new() { Dock = DockStyle.Fill };
+    private readonly TabControl _charts = new() { Dock = DockStyle.Fill };
     private readonly ProfileView _profile = new() { Dock = DockStyle.Fill };
     private readonly DataGridView _grid = new();
     private readonly ToolStrip _toolbar = new();
@@ -41,6 +43,9 @@ public sealed class MainForm : Form
     private Co2Sweep[] _sweeps = Array.Empty<Co2Sweep>();
     private bool _dark;
     private bool _clouds;
+
+    /// <summary>Set while a march is running, so a second one cannot start on top of it.</summary>
+    private bool _busy;
 
     /// <summary>
     /// The concentration the profile shows when the pointer is not over the response chart.
@@ -65,7 +70,20 @@ public sealed class MainForm : Form
         // The minimum sizes are deliberately NOT set here - see LayoutPanels.
         _figures.Dock = DockStyle.Fill;
         _figures.Orientation = Orientation.Vertical;
-        _figures.Panel1.Controls.Add(_chart);
+        var responseTab = new TabPage("CO₂ response");
+        responseTab.Controls.Add(_chart);
+        var scenarioTab = new TabPage("Both gases");
+        scenarioTab.Controls.Add(_scenario);
+        _charts.TabPages.Add(responseTab);
+        _charts.TabPages.Add(scenarioTab);
+
+        // The scenario costs twenty equilibrium marches, so it is not run until it is looked at.
+        _charts.SelectedIndexChanged += async (_, _) =>
+        {
+            if (_charts.SelectedIndex == 1 && !_scenario.HasData && !_busy) await RunScenarioAsync();
+        };
+
+        _figures.Panel1.Controls.Add(_charts);
         _figures.Panel2.Controls.Add(_profile);
         _figures.FixedPanel = FixedPanel.Panel2;
 
@@ -130,7 +148,10 @@ public sealed class MainForm : Form
     {
         _saveChartButton.Text = "Save chart…";
         _saveChartButton.Enabled = false;
-        _saveChartButton.Click += (_, _) => SaveChartPng();
+        _saveChartButton.Click += (_, _) =>
+        {
+            if (_charts.SelectedIndex == 1) SaveScenarioPng(); else SaveChartPng();
+        };
 
         _saveProfileButton.Text = "Save profile…";
         _saveProfileButton.Enabled = false;
@@ -254,6 +275,7 @@ public sealed class MainForm : Form
         // A sweep takes about a minute, and the cloud toggle can start another one while the
         // first is still going. Disabling the controls that would do so is simpler than trying
         // to cancel a march mid-flight.
+        _busy = true;
         _cloudButton.Enabled = false;
         _saveChartButton.Enabled = false;
         _saveProfileButton.Enabled = false;
@@ -277,6 +299,7 @@ public sealed class MainForm : Form
             // In a finally so a failed sweep cannot strand the window with a busy pointer and
             // a dead toggle.
             UseWaitCursor = false;
+            _busy = false;
             _cloudButton.Enabled = true;
         }
 
@@ -295,6 +318,54 @@ public sealed class MainForm : Form
         _saveChartButton.Enabled = true;
         _saveProfileButton.Enabled = sweeps[0].Profiles.Count > 0;
         _statusLabel.Text = Summary();
+    }
+
+    /// <summary>
+    /// Runs the coupled scenario, once, the first time its tab is looked at.
+    /// </summary>
+    /// <remarks>
+    /// Lazily rather than alongside the response sweep because it costs twice as much - two
+    /// equilibria at every concentration, one with both gases rising and one with CO2 alone -
+    /// and a reader who never opens the tab should not pay for it. The result never changes, so
+    /// once it is in hand the tab is free thereafter.
+    /// </remarks>
+    private async Task RunScenarioAsync()
+    {
+        _busy = true;
+        _cloudButton.Enabled = false;
+        _saveChartButton.Enabled = false;
+        _scenario.SetPoints(Array.Empty<ScenarioPoint>(), "Running both gases together…");
+        _statusLabel.Text = "Running the column at each concentration, with methane rising too…";
+        UseWaitCursor = true;
+
+        IReadOnlyList<ScenarioPoint> points;
+        try
+        {
+            points = await Task.Run(ScenarioSweep.Run);
+        }
+        finally
+        {
+            UseWaitCursor = false;
+            _busy = false;
+            _cloudButton.Enabled = true;
+        }
+
+        _scenario.SetPoints(points,
+            "No HITRAN data — run scripts/fetch-hitran.ps1 -Molecule all.");
+        _saveChartButton.Enabled = _sweeps.Length > 0 || points.Count > 0;
+        _statusLabel.Text = points.Count > 0 ? ScenarioSummary(points) : Summary();
+    }
+
+    /// <summary>What the scenario says at its far end, and how much of it methane is.</summary>
+    private static string ScenarioSummary(IReadOnlyList<ScenarioPoint> points)
+    {
+        var last = points[^1];
+        double share = last.WarmingBoth - last.WarmingCo2Only;
+
+        return string.Format(CultureInfo.InvariantCulture,
+            "{0:N0} ppm with {1:N0} ppb — +{2:F2} K, of which methane is {3:F2} K ({4:P0})   ·   {5}",
+            last.Ppm, last.Ppb, last.WarmingBoth, share,
+            last.WarmingBoth > 0 ? share / last.WarmingBoth : 0.0, ScenarioSweep.CouplingNote);
     }
 
     private string Summary()
@@ -459,7 +530,11 @@ public sealed class MainForm : Form
     {
         var theme = _dark ? ChartTheme.Dark : ChartTheme.Light;
         _chart.Theme = theme;
+        _scenario.Theme = theme;
         _profile.Theme = theme;
+        _charts.BackColor = theme.Plane;
+        _charts.ForeColor = theme.Ink;
+        _scenario.Invalidate();
         _chart.Invalidate();
         _profile.Invalidate();
 
@@ -514,6 +589,25 @@ public sealed class MainForm : Form
 
         Co2ChartExport.SavePng(dialog.FileName, _sweeps,
             _dark ? ChartTheme.Dark : ChartTheme.Light, _chart.Width, _chart.Height);
+
+        _statusLabel.Text = $"Saved {dialog.FileName}";
+    }
+
+    private void SaveScenarioPng()
+    {
+        if (!_scenario.HasData) return;
+
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "PNG image (*.png)|*.png",
+            FileName = "co2-and-methane.png",
+            Title = "Save the coupled scenario"
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        ScenarioChartExport.SavePng(dialog.FileName, _scenario.Points,
+            _dark ? ChartTheme.Dark : ChartTheme.Light, _scenario.Width, _scenario.Height);
 
         _statusLabel.Text = $"Saved {dialog.FileName}";
     }

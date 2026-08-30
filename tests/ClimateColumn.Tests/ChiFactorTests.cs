@@ -24,16 +24,59 @@ public class ChiFactorTests
     /// A discontinuity at a breakpoint would put a step into the absorption spectrum, which
     /// would then propagate into the k-distribution as a spurious feature.
     /// </summary>
-    [DataTestMethod]
-    [DataRow(3.0)]
-    [DataRow(30.0)]
-    [DataRow(120.0)]
-    public void IsContinuousAcrossEveryBreakpoint(double breakpoint)
+    [TestMethod]
+    public void IsContinuousAcrossEveryBreakpoint()
     {
         const double h = 1e-7;
 
-        Assert.AreEqual(Chi.At(breakpoint - h), Chi.At(breakpoint + h), 1e-6,
-            $"chi should not step at the {breakpoint:F0} cm^-1 breakpoint");
+        foreach (double breakpoint in new[] { Chi.FirstBreak, Chi.SecondBreak, Chi.ThirdBreak })
+        {
+            Assert.AreEqual(Chi.At(breakpoint - h), Chi.At(breakpoint + h), 1e-6,
+                $"chi should not step at the {breakpoint:F0} cm^-1 breakpoint");
+        }
+    }
+
+    /// <summary>
+    /// Pins the published coefficients, because the previous set was wrong and nothing caught it.
+    /// </summary>
+    /// <remarks>
+    /// Chaverot et al. (2025), A&amp;A 702, A137, Tables 2 and 3, CO2-N2, nu_2 band. The B values
+    /// are temperature dependent - B_i(T) = alpha + beta exp(-gamma T) - so they are checked at
+    /// the 296 K this model works at, and separately for varying with temperature at all, which
+    /// the coefficients they replaced did not.
+    /// </remarks>
+    [TestMethod]
+    public void CarriesThePublishedCarbonDioxideNitrogenCoefficients()
+    {
+        var chi = ChiFactor.CarbonDioxideNu2InNitrogen(296.0);
+
+        Assert.AreEqual(3.0, chi.FirstBreak, 0.0);
+        Assert.AreEqual(50.0, chi.SecondBreak, 0.0);
+        Assert.AreEqual(180.0, chi.ThirdBreak, 0.0);
+
+        Assert.AreEqual(0.065 + 0.038 * Math.Exp(-0.003 * 296.0), chi.FirstDecay, 1e-12);
+        Assert.AreEqual(0.018 + 0.055 * Math.Exp(-0.020 * 296.0), chi.SecondDecay, 1e-12);
+        Assert.AreEqual(0.0085, chi.ThirdDecay, 0.0);
+
+        // Colder air broadens less far, so the wings are cut back harder.
+        Assert.IsTrue(ChiFactor.CarbonDioxideNu2InNitrogen(220.0).FirstDecay > chi.FirstDecay,
+            "B1 should fall with temperature");
+    }
+
+    /// <summary>
+    /// The same band with a different collision partner is a different correction. Asserting it
+    /// keeps the pure-CO2 set from being quietly treated as interchangeable with the air one.
+    /// </summary>
+    [TestMethod]
+    public void DistinguishesTheCollisionPartner()
+    {
+        var air = ChiFactor.CarbonDioxideNu2InNitrogen();
+        var pure = ChiFactor.CarbonDioxideNu2InCarbonDioxide();
+
+        Assert.AreNotEqual(air.SecondBreak, pure.SecondBreak);
+        Assert.AreNotEqual(air.ThirdBreak, pure.ThirdBreak);
+        Assert.AreEqual(air, ChiFactor.CarbonDioxideNu2,
+            "an Earth-like column is CO2 in air, so that is the set it should default to");
     }
 
     [TestMethod]
@@ -53,9 +96,13 @@ public class ChiFactorTests
     }
 
     /// <summary>
-    /// The correction has to be negligible where the forcing was coming from, or it would not
-    /// have changed anything. At the shipped 400 cm^-1 cutoff it is down by four orders of
-    /// magnitude, which is why widening the cutoff further now buys so little.
+    /// The correction has to bite where the forcing was coming from, or it would not have
+    /// changed anything. At the shipped 400 cm^-1 cutoff chi is about 3e-4.
+    ///
+    /// It does not follow that the cutoff is converged. The published far wing decays with an
+    /// e-folding length of 118 cm^-1 against the 62 of the coefficients it replaced, so it
+    /// reaches further: opening the cutoff from 400 to 800 cm^-1 still moves the coefficient by
+    /// about 4 %, and only past 800 does it settle.
     /// </summary>
     [TestMethod]
     public void SuppressesTheFarWingsByOrdersOfMagnitude()
@@ -105,7 +152,7 @@ public class ChiFactorTests
     /// The headline result. With pure Lorentz wings the model's CO2 forcing coefficient came out
     /// near 6.95 W m^-2 per ln, about 1.30x the accepted 5.35; correcting the far wings brings it
     /// to roughly 0.9x. This asserts the direction and the rough size rather than a precise value,
-    /// because the chi coefficients are representative rather than verified - see ChiFactor.
+    /// because the exact figure depends on the wing cutoff and band resolution as well.
     /// </summary>
     [TestMethod]
     public void CorrectingTheWingsBringsTheForcingDownTowardsTheAcceptedLaw()
