@@ -1179,10 +1179,69 @@
       not what decides the answer — though how far those wings are <em>integrated</em> very much
       is, as the caveat below shows.</p>
 
+    <h3>The missing continuum was helping</h3>
+    <p>The continuum is this configuration&#8217;s largest stated omission, so the obvious next move is
+      to put one back and expect the coefficient to fall towards the accepted law. Measured, it
+      does the opposite.</p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>Window continuum optical depth added to the unfitted configuration</caption>
+        <thead>
+          <tr><th class="n">continuum τ</th><th class="n">surface</th><th class="n">A</th>
+              <th class="n">vs 5.35</th><th class="n">drift</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="n">0 (shipped)</td><td class="n">291.57 K</td><td class="n">6.150</td>
+              <td class="n">1.150×</td><td class="n">41.8 %</td></tr>
+          <tr><td class="n">0.3</td><td class="n">291.88 K</td><td class="n">6.175</td>
+              <td class="n">1.154×</td><td class="n">45.3 %</td></tr>
+          <tr><td class="n">1.0</td><td class="n">292.58 K</td><td class="n">6.226</td>
+              <td class="n">1.164×</td><td class="n">52.0 %</td></tr>
+          <tr><td class="n">2.0</td><td class="n">293.48 K</td><td class="n">6.288</td>
+              <td class="n">1.175×</td><td class="n">58.9 %</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>Every column moves the wrong way, monotonically, with no turning point anywhere in
+      the range.</strong> The surface goes further above Earth&#8217;s 288 K, the coefficient further
+      above 5.35, and the departure from a pure logarithm rises by half. There is no continuum
+      value that improves this configuration, plausible or otherwise.</p>
+
+    <p>Once the wing cutoff opened to 800 cm⁻¹ this configuration <em>over</em>-absorbs — 291.57 K
+      against 288, and 1.150× the accepted law. Its error is too much absorption, not too little,
+      and a continuum only adds more. So the omission was not a gap in the model: it was
+      cancelling part of an error, which makes it the third such cancellation in this document,
+      after the uncorrected wings against a hard cutoff and the two χ coefficient errors against
+      each other.</p>
+
+    <p>The continuum also <em>raises</em> the coefficient rather than masking it, which is worth
+      following. Masking needs overlap, and there is none: CO<sub>2</sub>&#8217;s band is at 667 cm⁻¹
+      and the window continuum runs 800–1250 cm⁻¹, so the two never meet. What the continuum does
+      is warm the column, and a warmer column yields more forcing per ln. Compare the water-vapour
+      masking described above, which is real precisely because vapour&#8217;s lines <em>do</em> sit on
+      top of CO<sub>2</sub>&#8217;s band.</p>
+
+    <p class="caveat"><strong>A coefficient this document does not have.</strong> A physically
+      correct continuum still belongs in the model, and the intent was to fit one from Roberts
+      <em>et al.</em> (1976). The functional form is available at second hand —
+      <span class="expr">C(ν, 296) = 4.18 + 5578 exp(−7.87×10⁻³ ν)</span> with
+      <span class="expr">C(ν, T) = C(ν, 296) exp[1800(1/T − 1/296)]</span> — but the primary report
+      could not be reached, and the units as quoted give about 3.4 km⁻¹ of window absorption at a
+      tropical surface where the observed figure is nearer 0.1–0.2, a discrepancy of roughly
+      thirty. Something is missing from the transcription, most likely a power-of-ten prefactor.
+      Nothing was entered on that basis. The χ factor in this model carried unverified
+      coefficients for a long time and they turned out to belong to a different band; the lesson
+      was cheap there because the two errors cancelled, and a thirty-fold error in the continuum
+      would not be. The parameter exists and is swept above, which is what it is for.</p>
+
     <p class="caveat">Two things this configuration does not do, stated because they would
       otherwise be silent. The water-vapour continuum is left out rather than carried over,
-      because the shipped continuum is a tuned number and importing it would put a fitted
-      parameter back into a configuration whose purpose is not to have one. And the vapour is a
+      because the shipped continuum is a tuned number — 1.2 times the absorber scale — and
+      importing it would put a fitted parameter back into a configuration whose purpose is not to
+      have one. As the sweep above shows, leaving it out is also not costing this configuration
+      anything. And the vapour is a
       fixed observed column rather than a Clausius–Clapeyron absorber, so there is no water
       vapour feedback here at all. It is a parallel configuration, not a replacement.</p>
   </section>
