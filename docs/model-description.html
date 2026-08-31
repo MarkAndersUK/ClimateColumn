@@ -1140,7 +1140,7 @@
         </thead>
         <tbody>
           <tr><td>Surface temperature</td><td class="n">291.57 K</td><td class="n">286.80 K</td><td class="n">~288 K</td></tr>
-          <tr><td>Convective top</td><td class="n">10.83 km</td><td class="n">5.83 km</td><td class="n">~8–11 km</td></tr>
+          <tr><td>Convective top</td><td class="n">13.29 km</td><td class="n">8.02 km</td><td class="n">~8–11 km</td></tr>
           <tr><td>CO₂ coefficient A</td><td class="n">6.150</td><td class="n">4.952</td><td class="n">5.35</td></tr>
           <tr><td>— against accepted</td><td class="n">1.150×</td><td class="n">0.926×</td><td class="n">1.00×</td></tr>
           <tr><td>Drift across the sweep</td><td class="n">41.8 %</td><td class="n">8.3 %</td><td class="n">—</td></tr>
@@ -1174,8 +1174,7 @@
       which is not what one would guess. Correcting the χ coefficients reshapes CO₂&#8217;s far wing
       and nothing else, and this is where CO₂ is most heavily overlain, so it looked like the place
       the correction would bite hardest. At the 400 cm⁻¹ cutoff it moved the coefficient from
-      4.250 to 4.233 and left the base state, the convective top and the drift unchanged to the
-      digit. When one gas carries 98.8 % of the opacity, the wing shape of a gas carrying 1.2 % is
+      4.250 to 4.233 and left the base state and the drift unchanged to the digit. When one gas carries 98.8 % of the opacity, the wing shape of a gas carrying 1.2 % is
       not what decides the answer — though how far those wings are <em>integrated</em> very much
       is, as the caveat below shows.</p>
 
@@ -1267,7 +1266,7 @@
           <tr><td>Warming to 1000 ppm</td><td class="n">+4.43 K</td><td class="n">+3.46 K</td></tr>
           <tr><td>— with vapour held fixed</td><td class="n">+2.32 K</td><td class="n">+2.50 K</td></tr>
           <tr><td>Sensitivity</td><td class="n">0.713 K/W m⁻²</td><td class="n">0.587 K/W m⁻²</td></tr>
-          <tr><td>Convective top, 285 → 1000 ppm</td><td class="n">5.83 → 5.83 km</td><td class="n">5.83 → 5.83 km</td></tr>
+          <tr><td>Convective top, 285 → 1000 ppm</td><td class="n">8.02 → 8.11 km</td><td class="n">7.84 → 7.92 km</td></tr>
           <tr><td>Emission-temperature level</td><td class="n">4.52 → 5.16 km</td><td class="n">4.24 → 4.75 km</td></tr>
         </tbody>
       </table>
@@ -1348,13 +1347,47 @@
       <strong>the re-derived column is the only defensible one</strong>.</p>
 
     <h3>What actually breaks</h3>
-    <p><strong>The convective top never moves.</strong> It sits at 5.83 km at every one of the
-      twelve concentrations, in both treatments, from 285 ppm to 10 000. A real atmosphere lifts
-      its tropopause substantially under that forcing. This matters more than it looks: the
-      greenhouse argument in this model runs through the height of the emission level and the
-      lapse rate below it, so a convective top that has stopped responding is a structural limit
-      rather than a tuning error. It is the first thing to fix if this range is ever wanted
-      seriously.</p>
+    <p><strong>The convective top barely moves — 8.02 km at 285 ppm to 8.15 km at 10 000 —
+      and how much of that is real is not yet settled.</strong> An earlier version of this section
+      reported it pinned at 5.83 km at every concentration and called that a structural limit.
+      That was wrong, and wrong in the direction of overstating a defect: the figure was a
+      diagnostic artefact. <code>ConvectiveTopAltitude</code> returned the <em>mid-altitude</em> of
+      the last segment sitting on the critical lapse rate, so it was biased half a segment low and
+      could only ever land on one of thirty grid points. It now reports the layer&#8217;s upper edge and
+      interpolates into the interval above, which is the treatment the emission level already
+      had.</p>
+
+    <p>What survives the fix is a smaller and better-defined problem. The absolute altitude is
+      close to converged at the shipped resolution — 8.02 km against 8.11 km at 240 segments, a
+      quarter of a kilometre — but the <em>response</em> to CO<sub>2</sub> is not:</p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>Convective top against vertical resolution, after the diagnostic was fixed</caption>
+        <thead>
+          <tr><th class="n">segments</th><th class="n">285 ppm</th><th class="n">1000 ppm</th>
+              <th class="n">10 000 ppm</th><th class="n">rise</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="n">30 (shipped)</td><td class="n">8.02</td><td class="n">8.11</td>
+              <td class="n">8.23 km</td><td class="n">0.21 km</td></tr>
+          <tr><td class="n">60</td><td class="n">8.20</td><td class="n">8.31</td>
+              <td class="n">9.13 km</td><td class="n">0.93 km</td></tr>
+          <tr><td class="n">120</td><td class="n">8.27</td><td class="n">8.72</td>
+              <td class="n">9.58 km</td><td class="n">1.31 km</td></tr>
+          <tr><td class="n">240</td><td class="n">8.11</td><td class="n">8.74</td>
+              <td class="n">9.98 km</td><td class="n"><strong>1.86 km</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Thirty segments understate the rise roughly ninefold. The convective adjustment mixes whole
+      segments, so how far the mixed layer extends is quantised however the result is reported —
+      interpolating the diagnostic fixes where the boundary is drawn, not how finely the layer
+      itself can be resolved. The greenhouse argument here runs through emission-level height and
+      the lapse rate beneath it, so if this range is ever wanted seriously the vertical resolution
+      is what needs raising. That is not a free change: the absorber scale is calibrated against
+      the base state at one resolution, so it would have to be re-solved.</p>
 
     <p class="caveat">Three further reasons not to read the number as a projection. The absorber
       scale is calibrated at a single point, 285 ppm, and the test suite already asserts that the
@@ -1367,7 +1400,7 @@
 
   <section>
     <h2>How it is checked</h2>
-    <p>420 tests, and the ones worth naming are those that check the model against something
+    <p>421 tests, and the ones worth naming are those that check the model against something
       outside itself.</p>
 
     <ul class="plain">
@@ -1444,7 +1477,7 @@
   <footer>
     <p>18,451 lines of C# in 69 files — 6,190 of physics in
       <code>ClimateColumn.Core</code>, 39&nbsp;% of it comment, and 8,900 lines of tests.
-      420 tests pass. Longwave opacity is derived from HITRAN line data, which is not
+      421 tests pass. Longwave opacity is derived from HITRAN line data, which is not
       redistributed with the source.</p>
   </footer>
 

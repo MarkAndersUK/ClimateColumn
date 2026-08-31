@@ -97,7 +97,8 @@ public sealed class ModelResult
 
     /// <summary>
     /// Altitude of the top of the convecting layer, m, taken as the highest segment
-    /// interface still sitting on the critical lapse rate. Zero when nothing is convecting.
+    /// interface still sitting on the critical lapse rate, interpolated into the interval above
+    /// rather than snapped to the grid. Zero when nothing is convecting.
     /// </summary>
     public double ConvectiveTopAltitude
     {
@@ -106,17 +107,39 @@ public sealed class ModelResult
             if (Column.Options.Convection != ConvectionMode.Full) return 0.0;
 
             double gamma = Column.Options.CriticalLapseRate;
-            double top = 0.0;
+            double tolerance = 1e-6 * Math.Max(gamma, 1e-12);
+
+            // Walk up while the profile still sits on the critical lapse rate. The mixed layer
+            // reaches the top edge of the last such segment, not its centre.
+            int last = -1;
+            double lapseAbove = 0.0;
             for (int i = 0; i < Column.Count - 1; i++)
             {
                 var lower = Column.Segments[i];
                 var upper = Column.Segments[i + 1];
-                double dz = upper.MidAltitude - lower.MidAltitude;
-                double lapse = (lower.Temperature - upper.Temperature) / dz;
-                if (Math.Abs(lapse - gamma) > 1e-6 * Math.Max(gamma, 1e-12)) break;
-                top = upper.MidAltitude;
+                double lapse = (lower.Temperature - upper.Temperature)
+                    / (upper.MidAltitude - lower.MidAltitude);
+
+                if (Math.Abs(lapse - gamma) > tolerance) { lapseAbove = lapse; break; }
+                last = i + 1;
             }
-            return top;
+
+            if (last < 0) return 0.0;
+
+            var top = Column.Segments[last];
+            double edge = top.MidAltitude + 0.5 * top.Thickness;
+
+            // The interval above is usually part-way convecting rather than abruptly stable, so
+            // the crossing is placed within it by how much of the critical lapse survives. This
+            // is the same treatment ColumnProfile.EmissionAltitude gives its own crossing, and
+            // without it the figure can only ever land on a grid point.
+            if (last + 1 < Column.Count && lapseAbove > 0.0 && lapseAbove < gamma)
+            {
+                double next = Column.Segments[last + 1].MidAltitude + 0.5 * Column.Segments[last + 1].Thickness;
+                edge += (lapseAbove / gamma) * (next - edge);
+            }
+
+            return edge;
         }
     }
 

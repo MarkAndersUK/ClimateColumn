@@ -128,6 +128,51 @@ public class FullModelTests
     }
 
     /// <summary>
+    /// The convective top must not be quantised to the segment grid.
+    /// </summary>
+    /// <remarks>
+    /// It used to be. The getter returned the mid-altitude of the last segment sitting on the
+    /// critical lapse rate, which is biased half a segment low and can only take one of
+    /// SegmentCount values - so across a CO2 sweep the reported top did not move at all, and that
+    /// was written up as the physics having stopped responding. It had not; the diagnostic could
+    /// not see it.
+    ///
+    /// This asserts the property that was violated rather than a value: two columns whose
+    /// convecting layers genuinely differ must report different tops, even when the difference is
+    /// smaller than a segment. A return to grid snapping makes them equal and fails here.
+    /// </remarks>
+    [TestMethod]
+    public void ConvectiveTopIsNotSnappedToTheSegmentGrid()
+    {
+        var tops = new List<double>();
+        foreach (double co2 in new[] { 285.0, 1000.0, 4000.0 })
+        {
+            var options = new ModelOptions();
+            options.Co2Concentration = co2;
+            tops.Add(ColumnModel.RunToEquilibrium(options).ConvectiveTopAltitude);
+        }
+
+        Console.WriteLine(string.Join("  ", tops.Select(t => (t / 1000.0).ToString("F3") + " km")));
+
+        Assert.IsTrue(tops.Distinct().Count() == tops.Count,
+            "the convective top repeated across concentrations, which is what grid snapping " +
+            $"looks like: {string.Join(", ", tops.Select(t => (t / 1000.0).ToString("F3")))} km");
+
+        Assert.IsTrue(tops[2] > tops[0],
+            $"more CO2 should not lower the convective top ({tops[0]:F0} m to {tops[2]:F0} m)");
+
+        // A grid mid-altitude would land on an exact multiple of the segment thickness. The
+        // interpolated value should not, except by coincidence at one concentration.
+        var result = ColumnModel.RunToEquilibrium(new ModelOptions());
+        double thickness = result.Column.Segments[0].Thickness;
+        double offGrid = result.ConvectiveTopAltitude / thickness;
+
+        Assert.IsTrue(Math.Abs(offGrid - Math.Round(offGrid)) > 1e-9,
+            $"the top {result.ConvectiveTopAltitude:F1} m is an exact multiple of the " +
+            $"{thickness:F1} m segment thickness, which suggests it is still snapped");
+    }
+
+    /// <summary>
     /// Solar absorption in the air is switched off so that tau = 0 remains a legitimate
     /// configuration with a genuine equilibrium.
     /// </summary>
