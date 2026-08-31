@@ -494,6 +494,81 @@
   </section>
 
   <section class="key">
+    <h2>What the bands actually look like</h2>
+    <p>The section above says which bands exist and where. That is checkable, and worth checking
+      independently of anything the model concludes, because where a gas absorbs is settled
+      spectroscopy this project does not get to choose. Accumulating each line list at its
+      observed column and finding the strongest bin gives:</p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>Band centres, from the line data alone</caption>
+        <thead>
+          <tr><th></th><th class="n">peak τ</th><th class="n">at</th>
+              <th class="n"></th><th class="n">published band</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Water vapour</td><td class="n">1.1 × 10⁶</td><td class="n">254 cm⁻¹</td>
+              <td class="n">39.4 µm</td><td class="n">rotational</td></tr>
+          <tr><td>Carbon dioxide</td><td class="n">2.6 × 10⁴</td><td class="n">668 cm⁻¹</td>
+              <td class="n">15.0 µm</td><td class="n">ν₂, 667 cm⁻¹</td></tr>
+          <tr><td>Ozone</td><td class="n">5.9</td><td class="n">1055 cm⁻¹</td>
+              <td class="n">9.5 µm</td><td class="n">9.6 µm</td></tr>
+          <tr><td>Methane</td><td class="n">11.3</td><td class="n">1306 cm⁻¹</td>
+              <td class="n">7.7 µm</td><td class="n">7.7 µm</td></tr>
+          <tr><td>Nitrous oxide</td><td class="n">4.2</td><td class="n">1297 cm⁻¹</td>
+              <td class="n">7.7 µm</td><td class="n">7.8 µm</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Every one lands where it should. That is a check on the line lists, the cross-section
+      path and the binning together, and <strong>nothing else in the test suite could have
+      caught a band in the wrong place</strong> — every other test works with band-mean
+      quantities that have already integrated the wavenumber axis away.</p>
+
+    <p>The figure is <code>docs/ir-absorption-bands.svg</code>, and the model draws it too.
+      It plots <em>band-averaged absorptivity</em>, the mean of 1 − e<sup>−τ</sup> within each
+      bin, rather than mean optical depth. That distinction is not cosmetic: a bin holding both
+      saturated line cores and transparent gaps has a mean τ that describes neither, because the
+      cores contribute values no real absorption could ever reach. Averaging absorptivity gives
+      the fraction the band actually stops, which is bounded and physical.</p>
+
+    <h3>The window, and what is missing from it</h3>
+    <p>Read down the shaded strip and the point of the figure appears. Across 800–1250 cm⁻¹, at
+      observed abundances and with no continuum, the atmosphere in this model is only
+      <strong>29 % closed</strong>:</p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>Mean absorptivity inside the 800–1250 cm⁻¹ window</caption>
+        <thead><tr><th></th><th class="n">window</th></tr></thead>
+        <tbody>
+          <tr><td>Water vapour</td><td class="n">17.4 %</td></tr>
+          <tr><td>Ozone</td><td class="n">12.6 %</td></tr>
+          <tr><td>Methane</td><td class="n">0.8 %</td></tr>
+          <tr><td>Nitrous oxide</td><td class="n">0.2 %</td></tr>
+          <tr><td>Carbon dioxide</td><td class="n"><strong>0.0 %</strong></td></tr>
+          <tr><td>All gases</td><td class="n"><strong>29.2 %</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Two things follow. <strong>Ozone matters here out of all proportion to its share of the
+      total opacity</strong> — 0.00 % of the column optical depth, yet 12.6 % of the window,
+      because its 9.6 µm band sits inside the one region where anything can escape. And
+      <strong>CO₂ contributes nothing at all</strong>, which is why the continuum sweep in the
+      unfitted configuration <em>raised</em> its forcing coefficient rather than masking it:
+      masking needs overlap, and CO₂&#8217;s band at 667 cm⁻¹ never meets the window.</p>
+
+    <p>The gap between this 29 % and the real atmosphere is the water-vapour continuum. That it
+      is visible here as a plainly open window, while adding a continuum was measured to make the
+      unfitted configuration worse on every count, is the sharpest statement of that
+      configuration&#8217;s problem: it is missing the continuum <em>and</em> over-absorbing
+      elsewhere, and the two errors were partly cancelling.</p>
+  </section>
+
+  <section class="key">
     <h2>The far wings, and the correction that changed the answer</h2>
     <p>The Lorentz profile comes from the impact approximation: collisions treated as
       instantaneous compared with the time between them. That holds near line centre and
@@ -1401,7 +1476,7 @@
 
   <section>
     <h2>How it is checked</h2>
-    <p>421 tests, and the ones worth naming are those that check the model against something
+    <p>426 tests, and the ones worth naming are those that check the model against something
       outside itself.</p>
 
     <ul class="plain">
@@ -1478,7 +1553,7 @@
   <footer>
     <p>18,451 lines of C# in 69 files — 6,190 of physics in
       <code>ClimateColumn.Core</code>, 39&nbsp;% of it comment, and 8,900 lines of tests.
-      421 tests pass. Longwave opacity is derived from HITRAN line data, which is not
+      426 tests pass. Longwave opacity is derived from HITRAN line data, which is not
       redistributed with the source.</p>
   </footer>
 
