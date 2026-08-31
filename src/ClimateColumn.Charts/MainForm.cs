@@ -24,6 +24,9 @@ public sealed class MainForm : Form
 {
     private readonly Co2ChartView _chart = new() { Dock = DockStyle.Fill };
     private readonly ScenarioView _scenario = new() { Dock = DockStyle.Fill };
+    private readonly MethaneView _methane = new() { Dock = DockStyle.Fill };
+    private readonly AbsorptionView _absorption = new() { Dock = DockStyle.Fill };
+    private readonly ToolStripDropDownButton _chartMenu = new();
     private readonly TabControl _charts = new() { Dock = DockStyle.Fill };
     private readonly ProfileView _profile = new() { Dock = DockStyle.Fill };
     private readonly DataGridView _grid = new();
@@ -36,13 +39,24 @@ public sealed class MainForm : Form
     private readonly ToolStripButton _quantityButton = new();
     private readonly ToolStripButton _gridButton = new();
     private readonly ToolStripButton _cloudButton = new();
+    private readonly ToolStripButton _expandButton = new();
     private readonly ToolStripComboBox _concentration = new();
+    private readonly ToolStripComboBox _cutoff = new();
     private readonly SplitContainer _outer = new();
     private readonly SplitContainer _figures = new();
 
     private Co2Sweep[] _sweeps = Array.Empty<Co2Sweep>();
     private bool _dark;
     private bool _clouds;
+
+    /// <summary>The chart is filling the window, with the profile and the grid put away.</summary>
+    private bool _expanded;
+
+    /// <summary>What the two panes were showing before expanding, so restoring is faithful.</summary>
+    private bool _profileWasCollapsed, _gridWasCollapsed;
+
+    /// <summary>Held so expanding can keep the menu's profile tick honest.</summary>
+    private ToolStripMenuItem? _profileItem;
 
     /// <summary>Set while a march is running, so a second one cannot start on top of it.</summary>
     private bool _busy;
@@ -54,6 +68,9 @@ public sealed class MainForm : Form
     /// show a single curve compared against itself.
     /// </summary>
     private int _pinned = Math.Max(0, Co2Sweep.HighlightIndex);
+
+    /// <summary>Wing cutoffs the absorption figure can be recomputed at, cm^-1.</summary>
+    private static readonly double[] Cutoffs = { 100, 200, 400, 800, 1600 };
 
     public MainForm()
     {
@@ -74,13 +91,28 @@ public sealed class MainForm : Form
         responseTab.Controls.Add(_chart);
         var scenarioTab = new TabPage("Both gases");
         scenarioTab.Controls.Add(_scenario);
+        var methaneTab = new TabPage("Methane");
+        methaneTab.Controls.Add(_methane);
+        var absorptionTab = new TabPage("Absorption bands");
+        absorptionTab.Controls.Add(_absorption);
         _charts.TabPages.Add(responseTab);
         _charts.TabPages.Add(scenarioTab);
+        _charts.TabPages.Add(methaneTab);
+        _charts.TabPages.Add(absorptionTab);
 
-        // The scenario costs twenty equilibrium marches, so it is not run until it is looked at.
+        // Both of the extra charts cost a full set of marches, so neither is run until it is
+        // looked at. Selecting through the menu goes through here too, so there is one path.
         _charts.SelectedIndexChanged += async (_, _) =>
         {
-            if (_charts.SelectedIndex == 1 && !_scenario.HasData && !_busy) await RunScenarioAsync();
+            SyncChartMenu();
+            if (_busy) return;
+            if (_charts.SelectedIndex == 1 && !_scenario.HasData) await RunScenarioAsync();
+            else if (_charts.SelectedIndex == 2 && !_methane.HasData) await RunMethaneAsync();
+            else if (_charts.SelectedIndex == 3 &&
+                     (!_absorption.HasData || _absorption.WingCutoff != SelectedCutoff))
+            {
+                await RunAbsorptionAsync();
+            }
         };
 
         _figures.Panel1.Controls.Add(_charts);
@@ -101,13 +133,25 @@ public sealed class MainForm : Form
         Controls.Add(toolbar);
         Controls.Add(_status);
 
+        foreach (Control view in new Control[] { _chart, _scenario, _methane, _absorption, _profile })
+        {
+            view.DoubleClick += (_, _) => ToggleExpand();
+        }
+
         _chart.HoverChanged += OnChartHover;
         _chart.Picked += Pin;
         _profile.HoverChanged += OnProfileHover;
 
         ApplyTheme();
 
-        Shown += (_, _) => LayoutPanels();
+        // Escape restores, which is what a reader expects from anything that filled the window.
+        KeyPreview = true;
+        KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape && _expanded) { ToggleExpand(); e.Handled = true; }
+        };
+
+        Shown += (_, _) => { LayoutPanels(); SyncChartMenu(); };
         Load += async (_, _) => await RunSweepsAsync();
     }
 
@@ -150,12 +194,24 @@ public sealed class MainForm : Form
         _saveChartButton.Enabled = false;
         _saveChartButton.Click += (_, _) =>
         {
-            if (_charts.SelectedIndex == 1) SaveScenarioPng(); else SaveChartPng();
+            switch (_charts.SelectedIndex)
+            {
+                case 1: SaveScenarioPng(); break;
+                case 2: SaveMethanePng(); break;
+                case 3: SaveAbsorptionPng(); break;
+                default: SaveChartPng(); break;
+            }
         };
 
         _saveProfileButton.Text = "Save profile…";
         _saveProfileButton.Enabled = false;
         _saveProfileButton.Click += (_, _) => SaveProfilePng();
+
+        // Expanding puts both companions away at once. The previous state is remembered rather
+        // than assumed, so restoring does not silently re-open a pane the reader had closed.
+        _expandButton.Text = "Expand";
+        _expandButton.ToolTipText = "Give the chart the whole window (double-click a chart too)";
+        _expandButton.Click += (_, _) => ToggleExpand();
 
         _themeButton.Text = "Dark";
         _themeButton.Click += (_, _) =>
@@ -211,9 +267,60 @@ public sealed class MainForm : Form
             if (_concentration.SelectedIndex >= 0) Pin(_concentration.SelectedIndex);
         };
 
+        _chartMenu.Text = "Chart";
+        _chartMenu.DisplayStyle = ToolStripItemDisplayStyle.Text;
+        foreach (var (label, index) in new[]
+        {
+            ("CO₂ response", 0), ("Both gases — CO₂ and methane", 1), ("Methane law", 2),
+            ("Infrared absorption bands", 3)
+        })
+        {
+            var item = new ToolStripMenuItem(label) { Tag = index };
+            item.Click += (sender, _) =>
+            {
+                if (sender is ToolStripMenuItem m && m.Tag is int i) _charts.SelectedIndex = i;
+            };
+            _chartMenu.DropDownItems.Add(item);
+        }
+
+        // The profile is not a tab - it sits in the other pane - so the menu toggles it rather
+        // than selecting it, which is the only honest thing a chart menu can do with it.
+        _chartMenu.DropDownItems.Add(new ToolStripSeparator());
+        _profileItem = new ToolStripMenuItem("Vertical profile") { CheckOnClick = true, Checked = true };
+        _profileItem.Click += (_, _) =>
+        {
+            _figures.Panel2Collapsed = !_profileItem.Checked;
+            _saveProfileButton.Enabled = _profileItem.Checked && _sweeps.Length > 0
+                && _sweeps[0].Profiles.Count > 0;
+        };
+        _chartMenu.DropDownItems.Add(_profileItem);
+
+        // Scoped to the absorption figure alone, deliberately. Moving the cutoff changes the
+        // band mean and so the effective loading, which is why the calibrated scales had to be
+        // re-solved when the shipped value moved from 400 to 800 - see Co2Sweep.DefaultWingCutoff.
+        // Letting a combo box move it under the calibrated sweeps would silently invalidate every
+        // number they report. The spectroscopy figure has no calibration to invalidate.
+        _cutoff.DropDownStyle = ComboBoxStyle.DropDownList;
+        _cutoff.Width = 96;
+        _cutoff.ToolTipText = "Wing cutoff for the absorption bands figure only";
+        foreach (double c in Cutoffs)
+        {
+            _cutoff.Items.Add(c.ToString("N0", CultureInfo.InvariantCulture) + " cm⁻¹");
+        }
+        _cutoff.SelectedIndex = Math.Max(0, Array.IndexOf(Cutoffs, Co2Sweep.DefaultWingCutoff));
+        _cutoff.SelectedIndexChanged += async (_, _) =>
+        {
+            // Only recompute when the figure is actually showing; otherwise the new value is
+            // picked up whenever it is first selected.
+            if (_busy || _charts.SelectedIndex != 3) return;
+            await RunAbsorptionAsync();
+        };
+
         var toolbar = _toolbar;
         toolbar.Dock = DockStyle.Top;
         toolbar.GripStyle = ToolStripGripStyle.Hidden;
+        toolbar.Items.Add(_chartMenu);
+        toolbar.Items.Add(new ToolStripSeparator());
         toolbar.Items.Add(_saveChartButton);
         toolbar.Items.Add(_saveProfileButton);
         toolbar.Items.Add(new ToolStripSeparator());
@@ -224,6 +331,10 @@ public sealed class MainForm : Form
         toolbar.Items.Add(new ToolStripSeparator());
         toolbar.Items.Add(_cloudButton);
         toolbar.Items.Add(new ToolStripSeparator());
+        toolbar.Items.Add(new ToolStripLabel("Wings to"));
+        toolbar.Items.Add(_cutoff);
+        toolbar.Items.Add(new ToolStripSeparator());
+        toolbar.Items.Add(_expandButton);
         toolbar.Items.Add(_gridButton);
         toolbar.Items.Add(_themeButton);
         return toolbar;
@@ -354,6 +465,158 @@ public sealed class MainForm : Form
             "No HITRAN data — run scripts/fetch-hitran.ps1 -Molecule all.");
         _saveChartButton.Enabled = _sweeps.Length > 0 || points.Count > 0;
         _statusLabel.Text = points.Count > 0 ? ScenarioSummary(points) : Summary();
+    }
+
+    /// <summary>
+    /// Gives the chart the whole window, or puts the profile and the values grid back.
+    /// </summary>
+    private void ToggleExpand()
+    {
+        if (_expanded)
+        {
+            _figures.Panel2Collapsed = _profileWasCollapsed;
+            _outer.Panel2Collapsed = _gridWasCollapsed;
+        }
+        else
+        {
+            _profileWasCollapsed = _figures.Panel2Collapsed;
+            _gridWasCollapsed = _outer.Panel2Collapsed;
+            _figures.Panel2Collapsed = true;
+            _outer.Panel2Collapsed = true;
+        }
+
+        _expanded = !_expanded;
+        _expandButton.Text = _expanded ? "Restore" : "Expand";
+
+        // The two controls that also drive these panes must not now be lying about their state.
+        _gridButton.Text = _outer.Panel2Collapsed ? "Show values" : "Hide values";
+        if (_profileItem is not null) _profileItem.Checked = !_figures.Panel2Collapsed;
+        _saveProfileButton.Enabled = !_figures.Panel2Collapsed && _sweeps.Length > 0
+            && _sweeps[0].Profiles.Count > 0;
+    }
+
+    /// <summary>Ticks the menu entry for whichever chart is showing.</summary>
+    private void SyncChartMenu()
+    {
+        foreach (var item in _chartMenu.DropDownItems.OfType<ToolStripMenuItem>())
+        {
+            if (item.Tag is int i) item.Checked = i == _charts.SelectedIndex;
+        }
+    }
+
+    /// <summary>
+    /// Runs the methane sweep, once, the first time its chart is looked at.
+    /// </summary>
+    /// <remarks>
+    /// Re-derived per concentration, which is the mode the share was calibrated in and the only
+    /// one that reproduces the observed square-root law - so it pays a band derivation at every
+    /// point and is much too slow to run on startup.
+    /// </remarks>
+    private async Task RunMethaneAsync()
+    {
+        _busy = true;
+        _cloudButton.Enabled = false;
+        _saveChartButton.Enabled = false;
+        _methane.SetSweep(null, "Running the column at each methane concentration…");
+        _statusLabel.Text = "Running the column to equilibrium at each methane concentration…";
+        UseWaitCursor = true;
+
+        MethaneSweep? sweep;
+        try
+        {
+            sweep = await Task.Run(() => MethaneSweep.Run());
+        }
+        finally
+        {
+            UseWaitCursor = false;
+            _busy = false;
+            _cloudButton.Enabled = true;
+        }
+
+        _methane.SetSweep(sweep, "No HITRAN data — run scripts/fetch-hitran.ps1 -Molecule all.");
+        _saveChartButton.Enabled = _sweeps.Length > 0 || sweep is not null;
+        _statusLabel.Text = sweep is null ? Summary() : MethaneSummary(sweep);
+    }
+
+    /// <summary>
+    /// Computes the absorption bands, once, the first time the chart is looked at.
+    /// </summary>
+    /// <remarks>
+    /// This one costs no equilibrium marches at all - it is pure spectroscopy - but it does a
+    /// line-by-line accumulation per molecule at sixty thousand samples, which is still far too
+    /// slow for the UI thread.
+    /// </remarks>
+    private async Task RunAbsorptionAsync()
+    {
+        double cutoff = SelectedCutoff;
+
+        _busy = true;
+        _cloudButton.Enabled = false;
+        _cutoff.Enabled = false;
+        _saveChartButton.Enabled = false;
+        _absorption.SetTraces(Array.Empty<AbsorptionTrace>(), cutoff,
+            "Accumulating line-by-line spectra…");
+        _statusLabel.Text = string.Format(CultureInfo.InvariantCulture,
+            "Accumulating the infrared spectrum of each gas, wings to {0:F0} cm⁻¹…", cutoff);
+        UseWaitCursor = true;
+
+        IReadOnlyList<AbsorptionTrace>? traces;
+        try
+        {
+            traces = await Task.Run(() => AbsorptionSpectrum.Compute(wingCutoff: cutoff));
+        }
+        finally
+        {
+            UseWaitCursor = false;
+            _busy = false;
+            _cloudButton.Enabled = true;
+            _cutoff.Enabled = true;
+        }
+
+        _absorption.SetTraces(traces ?? Array.Empty<AbsorptionTrace>(), cutoff,
+            "No HITRAN data — run scripts/fetch-hitran.ps1 -Molecule all.");
+        _saveChartButton.Enabled = _sweeps.Length > 0 || traces is not null;
+        _statusLabel.Text = traces is null ? Summary() : AbsorptionSummary(traces, cutoff);
+    }
+
+    /// <summary>The wing cutoff the toolbar is asking for, cm^-1.</summary>
+    private double SelectedCutoff =>
+        _cutoff.SelectedIndex >= 0 && _cutoff.SelectedIndex < Cutoffs.Length
+            ? Cutoffs[_cutoff.SelectedIndex]
+            : Co2Sweep.DefaultWingCutoff;
+
+    /// <summary>How open the window is, which is what the figure is for.</summary>
+    private static string AbsorptionSummary(IReadOnlyList<AbsorptionTrace> traces, double cutoff)
+    {
+        var all = traces[^1];
+        double window = AbsorptionSpectrum.MeanBetween(
+            all, AbsorptionSpectrum.WindowFrom, AbsorptionSpectrum.WindowTo);
+
+        var parts = traces.Take(traces.Count - 1)
+            .Select(t => string.Format(CultureInfo.InvariantCulture, "{0} {1:P0}", t.Gas,
+                AbsorptionSpectrum.MeanBetween(t, AbsorptionSpectrum.WindowFrom,
+                    AbsorptionSpectrum.WindowTo)))
+            .Where((_, i) => i < 3);
+
+        return string.Format(CultureInfo.InvariantCulture,
+            "wings to {0:F0} cm⁻¹ — {1:F0}–{2:F0} cm⁻¹ window is {3:P0} closed, no continuum   ·   {4}",
+            cutoff, AbsorptionSpectrum.WindowFrom, AbsorptionSpectrum.WindowTo, window,
+            string.Join("   ·   ", parts));
+    }
+
+    /// <summary>What the methane sweep says at present day and at the top of its range.</summary>
+    private static string MethaneSummary(MethaneSweep sweep)
+    {
+        int present = MethaneSweep.PresentDayIndex;
+        int last = MethaneSweep.Concentrations.Length - 1;
+
+        return string.Format(CultureInfo.InvariantCulture,
+            "{0:N0} → {1:N0} ppb — {2:F3} vs {3:F3} W/m² accepted at present day   ·   " +
+            "{4:F3} vs {5:F3} at {6:N0} ppb   ·   best fit {7}",
+            MethaneSweep.Concentrations[0], MethaneSweep.Concentrations[last],
+            sweep.Forcings[present], sweep.AcceptedForcing(present),
+            sweep.Forcings[last], sweep.AcceptedForcing(last),
+            MethaneSweep.Concentrations[last], sweep.BestFit().Name);
     }
 
     /// <summary>What the scenario says at its far end, and how much of it methane is.</summary>
@@ -531,6 +794,10 @@ public sealed class MainForm : Form
         var theme = _dark ? ChartTheme.Dark : ChartTheme.Light;
         _chart.Theme = theme;
         _scenario.Theme = theme;
+        _methane.Theme = theme;
+        _methane.Invalidate();
+        _absorption.Theme = theme;
+        _absorption.Invalidate();
         _profile.Theme = theme;
         _charts.BackColor = theme.Plane;
         _charts.ForeColor = theme.Ink;
@@ -608,6 +875,45 @@ public sealed class MainForm : Form
 
         ScenarioChartExport.SavePng(dialog.FileName, _scenario.Points,
             _dark ? ChartTheme.Dark : ChartTheme.Light, _scenario.Width, _scenario.Height);
+
+        _statusLabel.Text = $"Saved {dialog.FileName}";
+    }
+
+    private void SaveMethanePng()
+    {
+        if (_methane.Sweep is null) return;
+
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "PNG image (*.png)|*.png",
+            FileName = "methane-law.png",
+            Title = "Save the methane figure"
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        MethaneChartExport.SavePng(dialog.FileName, _methane.Sweep,
+            _dark ? ChartTheme.Dark : ChartTheme.Light, _methane.Width, _methane.Height);
+
+        _statusLabel.Text = $"Saved {dialog.FileName}";
+    }
+
+    private void SaveAbsorptionPng()
+    {
+        if (!_absorption.HasData) return;
+
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "PNG image (*.png)|*.png",
+            FileName = "absorption-bands.png",
+            Title = "Save the absorption bands"
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        AbsorptionChartExport.SavePng(dialog.FileName, _absorption.Traces,
+            _absorption.WingCutoff, _dark ? ChartTheme.Dark : ChartTheme.Light,
+            _absorption.Width, _absorption.Height);
 
         _statusLabel.Text = $"Saved {dialog.FileName}";
     }
