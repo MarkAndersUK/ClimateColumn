@@ -755,6 +755,62 @@
       </table>
     </div>
 
+    <h3>Recalibrating does not rescue a short cutoff</h3>
+    <p>The series above holds the loading fixed while the cutoff moves, which confounds two
+      things: a wider cutoff integrates more wing <em>and</em> raises each band&#8217;s mean optical
+      depth, so part of what it shows is simply more gas. Solving the calibration separately at
+      every cutoff removes that. Each row below reaches the same 286.797 K base state and the
+      same methane forcing by its own route, so anything left is the wings alone.</p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>A full calibration at each cutoff — base state and methane forcing identical by
+          construction, so only the wings differ</caption>
+        <thead>
+          <tr><th class="n">cutoff</th><th class="n">scale, clear</th><th class="n">share</th>
+              <th class="n">scale, cloud</th><th class="n">A</th><th class="n">vs 5.35</th>
+              <th class="n">drift</th><th class="n">to 1000 ppm</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="n">100</td><td class="n">19.6980</td><td class="n">0.00641</td>
+              <td class="n">5.8869</td><td class="n">4.511</td><td class="n">0.843×</td>
+              <td class="n">11.2 %</td><td class="n">+3.69 K</td></tr>
+          <tr><td class="n">200</td><td class="n">18.1630</td><td class="n">0.00670</td>
+              <td class="n">5.7408</td><td class="n">4.588</td><td class="n">0.858×</td>
+              <td class="n">11.1 %</td><td class="n">+4.06 K</td></tr>
+          <tr><td class="n">400</td><td class="n">17.7771</td><td class="n">0.00687</td>
+              <td class="n">5.7004</td><td class="n">4.717</td><td class="n">0.882×</td>
+              <td class="n">10.1 %</td><td class="n">+4.22 K</td></tr>
+          <tr><td class="n"><strong>800</strong></td><td class="n">17.5210</td>
+              <td class="n">0.00692</td><td class="n">5.6713</td>
+              <td class="n"><strong>4.952</strong></td><td class="n">0.926×</td>
+              <td class="n">8.3 %</td><td class="n">+4.43 K</td></tr>
+          <tr><td class="n">1600</td><td class="n">17.4843</td><td class="n">0.00695</td>
+              <td class="n">5.6662</td><td class="n">4.968</td><td class="n">0.929×</td>
+              <td class="n">8.2 %</td><td class="n">+4.45 K</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>The coefficient still varies by ten per cent across the range, and no
+      recalibration can absorb it.</strong> The reason the scale cannot compensate is that the
+      two quantities are set by different things: the base state by <em>total</em> absorption,
+      which more gas can always restore, and the forcing by how the wing <em>responds to more
+      gas</em>, which it cannot. A short cutoff genuinely under-forces, and calibrating it only
+      makes it self-consistent about doing so.</p>
+
+    <p>Read down the last three columns and the plateau is unmistakable. From 800 to 1600 the
+      coefficient moves 0.3 %, the drift 0.1 of a point and the warming 0.02 K; the steps below
+      800 are 1.7 %, 2.8 % and 5.0 %, an order of magnitude larger. <strong>The shipped cutoff
+      sits on the plateau rather than one doubling short of it</strong>, which is the same
+      conclusion the fixed-loading series reached, now under the stronger test.</p>
+
+    <p class="caveat">One trap this table sets and disarms. The absorber scale converges too —
+      0.2 % from 800 to 1600 — so it is tempting to read a settled calibration as evidence that
+      the spectroscopy has settled. It is not. At 400 cm⁻¹ the scale is within 1.5 % of its
+      converged value while the coefficient is still 5 % short. The two happen to converge
+      together at the top of this range; nothing guarantees they will.</p>
+
     <p>The methane share barely moves because it is 0.07 % of the absorber recipe and so almost
       decoupled from the base state; the scale comes down 1.3 %, which is the wider cutoff
       absorbing more per unit absorber. Anything quoted at 400 cm⁻¹ elsewhere in this document is
@@ -804,7 +860,8 @@
     <p>Two consequences follow, and both were checked. Widening the wing cutoff hands the band
       more unsaturated wing, so it should drift less: 400 → 800 cm⁻¹ takes the drift from 10.1 %
       to 8.2 % at fixed loading, and to 8.3 % once the loading is re-solved there — the prediction
-      made before the measurement rather than after it, and what decided the cutoff. And
+      made before the measurement rather than after it, and the first of the two arguments that
+      decided the cutoff. And
       because the two tendencies have opposite sign, <strong>a pure logarithm lies between
       them</strong> — the model straddles the accepted law rather than missing it in one
       direction.</p>
